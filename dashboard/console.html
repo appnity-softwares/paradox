@@ -2,119 +2,341 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Paradox — Platform Console</title>
 <style>
-  :root { color-scheme: dark; }
-  body { font-family: ui-monospace, Menlo, monospace; background: #0d1117; color: #c9d1d9; margin: 0; padding: 16px; }
-  h1 { font-size: 18px; } h2 { font-size: 14px; color: #58a6ff; margin: 18px 0 6px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
-  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px; }
-  .label { font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
-  .LIVE { background: #1a7f37; } .DELAYED { background: #9e6a03; }
-  .STALE { background: #b35900; } .SYNTHETIC { background: #8b949e; color: #0d1117; }
-  .ok { color: #3fb950; } .warn { color: #d29922; } .bad { color: #f85149; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  td, th { border-bottom: 1px solid #21262d; padding: 4px 6px; text-align: left; }
-  button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
-  button.danger { background: #67060c; border-color: #f85149; color: #fff; }
-  button:disabled { opacity: .4; cursor: not-allowed; }
-  input, select { background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 5px; }
-  #feed { max-height: 180px; overflow-y: auto; font-size: 11px; }
+  :root {
+    color-scheme: dark;
+    --bg: #0a0e14;
+    --surface: #10161f;
+    --surface-2: #151d29;
+    --border: #1f2a38;
+    --text: #dbe4ee;
+    --text-dim: #8a97a8;
+    --text-faint: #5c6a7d;
+    --accent: #d4a843;
+    --accent-soft: rgba(212,168,67,.12);
+    --blue: #4f8cff;
+    --green: #34c07c;
+    --red: #e5544f;
+    --amber: #d99a3d;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    background: var(--bg); color: var(--text);
+    margin: 0; font-size: 14px; line-height: 1.5;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  /* ── header ─────────────────────────────────────────── */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; height: 56px;
+    background: rgba(10,14,20,.92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand-mark { color: var(--accent); font-size: 18px; }
+  .brand-name { font-weight: 700; font-size: 16px; letter-spacing: .04em; }
+  .brand-sub { color: var(--text-faint); font-size: 12px; }
+  #topbar-status { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
+
+  /* ── layout ─────────────────────────────────────────── */
+  .shell { display: flex; min-height: calc(100vh - 56px); }
+  nav {
+    width: 216px; flex-shrink: 0; padding: 20px 12px;
+    border-right: 1px solid var(--border);
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; margin-bottom: 2px; border-radius: 8px;
+    color: var(--text-dim); cursor: pointer; font-size: 13.5px;
+    border: 1px solid transparent; user-select: none;
+  }
+  .nav-item:hover { background: var(--surface); color: var(--text); }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent); border-color: rgba(212,168,67,.25); }
+  .nav-item .ico { width: 18px; text-align: center; opacity: .9; }
+  .nav-foot { margin-top: 28px; padding: 0 12px; font-size: 11px; color: var(--text-faint); line-height: 1.6; }
+  main { flex: 1; padding: 28px 32px; max-width: 1080px; }
+  section[hidden] { display: none; }
+  .page-title { font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+  .page-sub { color: var(--text-dim); font-size: 13px; margin: 0 0 24px; }
+
+  /* ── cards ──────────────────────────────────────────── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h3 { margin: 0 0 14px; font-size: 13px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .muted { color: var(--text-faint); font-size: 12px; }
+  .stat-line { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; }
+  .stat-line b { font-weight: 600; }
+
+  /* ── pills / labels ─────────────────────────────────── */
+  .pill {
+    display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
+    padding: 3px 9px; border-radius: 999px; text-transform: uppercase;
+  }
+  .pill.DELAYED { background: rgba(217,154,61,.15); color: var(--amber); }
+  .pill.LIVE    { background: rgba(52,192,124,.15); color: var(--green); }
+  .pill.STALE   { background: rgba(229,84,79,.15); color: var(--red); }
+  .pill.SYNTHETIC { background: rgba(138,151,168,.15); color: var(--text-dim); }
+  .ok  { color: var(--green); } .warn { color: var(--amber); } .bad { color: var(--red); }
+
+  /* ── forms ──────────────────────────────────────────── */
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  label { display: block; font-size: 11.5px; color: var(--text-dim); margin-bottom: 4px; letter-spacing: .03em; }
+  input, select {
+    width: 100%; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 13.5px; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  .btn {
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 16px; font-size: 13.5px; cursor: pointer; font-weight: 500;
+  }
+  .btn:hover { border-color: var(--text-faint); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #14100a; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.danger { background: rgba(229,84,79,.12); border-color: rgba(229,84,79,.5); color: var(--red); }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn.wide { width: 100%; }
+  .form-error { color: var(--red); font-size: 12px; margin-top: 10px; min-height: 15px; }
+  .out {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+    color: var(--text-dim); background: var(--surface-2);
+    border-radius: 8px; padding: 10px 12px; margin-top: 12px;
+    white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow-y: auto;
+  }
+  .out:empty { display: none; }
+
+  /* ── tables ─────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); padding: 6px 10px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── login overlay ──────────────────────────────────── */
+  #login-overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(6,9,13,.8); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #login-overlay[hidden] { display: none; }
+  .login-card {
+    width: 340px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 28px;
+  }
+  .login-title { font-size: 18px; font-weight: 650; margin-bottom: 2px; }
+  .login-sub { color: var(--text-faint); font-size: 12.5px; margin-bottom: 20px; }
+  .login-card label { margin-bottom: 14px; }
+  .opt { color: var(--text-faint); }
+
+  /* ── audit feed ─────────────────────────────────────── */
+  #feed { max-height: 420px; overflow-y: auto; font-size: 12px; }
+  #feed > div { padding: 7px 10px; border-bottom: 1px solid var(--border-soft); font-family: ui-monospace, Menlo, monospace; color: var(--text-dim); }
+  #feed > div:last-child { border-bottom: none; }
+
+  /* ── kill switch ────────────────────────────────────── */
+  .ks-state { font-size: 15px; font-weight: 650; margin-bottom: 12px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  svg { display: block; }
+  #rp-slider { width: 100%; accent-color: var(--accent); margin: 10px 0; }
+  @media (max-width: 800px) {
+    nav { display: none; }
+    main { padding: 20px 16px; }
+  }
 </style>
 </head>
 <body>
-<h1>Platform Console <span style="color:#8b949e;font-size:12px">— live controls locked until Phase 4 sign-off</span></h1>
 
-<h2>Overview</h2>
-<div class="grid" id="accounts"></div>
+<header>
+  <div class="brand">
+    <span class="brand-mark">◇</span>
+    <span class="brand-name">PARADOX</span>
+    <span class="brand-sub">Platform Console</span>
+  </div>
+  <div id="topbar-status"></div>
+</header>
 
-<h2>Data sources (honest labels)</h2>
-<div class="card"><table id="sources"></table></div>
-
-<h2>Kill switch — always visible</h2>
-<div class="card" id="killswitch"></div>
-
-<h2>Sessions (U2)</h2>
-<div class="card" id="sessions">loading…</div>
-
-<h2>Compliance</h2>
-<div class="grid" id="compliance"></div>
-
-<h2>Accounts (admin)</h2>
-<div class="card">
-  <table><tr><td>id</td><td><input id="a-id" value="paper-10k" size="10"></td>
-      <td>balance</td><td><input id="a-balance" value="10000" size="8"></td></tr></table>
-  <button onclick="registerAccount()">Register account</button>
-  <pre id="a-out" style="font-size:11px;color:#8b949e"></pre>
+<div id="login-overlay" hidden>
+  <div class="login-card" id="login-box">
+    <div class="login-title">Sign in</div>
+    <div class="login-sub">Session auth · MFA if enrolled</div>
+    <label>User
+      <input id="l-user" value="admin" autocomplete="username">
+    </label>
+    <label>Password
+      <input id="l-pass" type="password" autocomplete="current-password">
+    </label>
+    <label>TOTP <span class="opt">(only if MFA is enabled)</span>
+      <input id="l-totp" placeholder="6-digit code" inputmode="numeric">
+    </label>
+    <button class="btn primary wide" onclick="doLogin()">Sign in</button>
+    <div id="l-err" class="form-error"></div>
+  </div>
 </div>
 
-<h2>Order ticket (paper gateway)</h2>
-<div class="card">
-  <table>
-    <tr><td>account</td><td><input id="t-account" value="paper-10k" size="10"></td>
-        <td>side</td><td><select id="t-side"><option>long</option><option>short</option></select></td></tr>
-    <tr><td>risk %</td><td><input id="t-risk" value="0.5" size="6"></td>
-        <td>SL</td><td><input id="t-sl" value="2588" size="8"></td></tr>
-    <tr><td>TP</td><td><input id="t-tp" value="2624" size="8"></td>
-        <td>key</td><td><input id="t-key" value="ticket-1" size="12"></td></tr>
-  </table>
-  <button onclick="submitTicket()">Submit (paper)</button>
-  <button class="danger" disabled title="Enabled only after Phase 4 sign-off">Submit LIVE</button>
-  <pre id="ticket-result" style="font-size:11px;color:#8b949e"></pre>
-</div>
+<div class="shell">
+  <nav>
+    <div class="nav-item active" data-tab="overview"><span class="ico">◈</span>Overview</div>
+    <div class="nav-item" data-tab="risk"><span class="ico">⬡</span>Risk &amp; Compliance</div>
+    <div class="nav-item" data-tab="trading"><span class="ico">⇅</span>Trading</div>
+    <div class="nav-item" data-tab="analytics"><span class="ico">◐</span>Analytics</div>
+    <div class="nav-item" data-tab="audit"><span class="ico">☰</span>Audit Log</div>
+    <div class="nav-foot">
+      Live controls stay locked until Phase 4 sign-off.<br><br>
+      Every data source is labelled for what it actually is.
+    </div>
+  </nav>
 
-<h2>AI assistant (read/propose only)</h2>
-<div class="card">
-  <input id="ai-msg" value="Summarize my positions" size="40">
-  <button onclick="askAssistant()">Ask</button>
-  <pre id="ai-out" style="font-size:11px;color:#8b949e"></pre>
-</div>
+  <main>
+    <!-- ── OVERVIEW ─────────────────────────────────── -->
+    <section id="tab-overview">
+      <h1 class="page-title">Overview</h1>
+      <p class="page-sub">Accounts, their live status, and where the data comes from.</p>
 
-<h2>Charts — real bars (DELAYED), backtest equity/drawdown, trade markers</h2>
-<div class="card">
-  <button onclick="loadChart()">Load 2025-01-02→08 · 15m · EMA cross backtest</button>
-  <span style="font-size:11px;color:#8b949e" id="chart-label"></span>
-  <svg id="candles" width="100%" height="220" viewBox="0 0 1000 220"></svg>
-  <svg id="equity" width="100%" height="140" viewBox="0 0 1000 140"></svg>
-  <div style="font-size:11px;color:#8b949e" id="chart-summary"></div>
-</div>
+      <div class="card">
+        <h3>Accounts</h3>
+        <div class="grid-2" id="accounts"></div>
+      </div>
 
-<h2>Trade replay — step through the backtest bar by bar</h2>
-<div class="card">
-  <button onclick="loadReplay()">Load replay (2025-01-02→08 · 15m)</button>
-  <input type="range" id="rp-slider" min="0" max="0" value="0" style="width:70%"
-         oninput="showBar(parseInt(this.value))">
-  <span id="rp-pos" style="font-size:11px"></span>
-  <svg id="rp-svg" width="100%" height="220" viewBox="0 0 1000 220"></svg>
-  <div id="rp-status" style="font-size:12px"></div>
-</div>
+      <div class="card">
+        <h3>Data sources</h3>
+        <table id="sources"></table>
+      </div>
+    </section>
 
-<h2>Admin — audit log</h2>
-<div class="card"><div id="feed"></div></div>
+    <!-- ── RISK & COMPLIANCE ────────────────────────── -->
+    <section id="tab-risk" hidden>
+      <h1 class="page-title">Risk &amp; Compliance</h1>
+      <p class="page-sub">Kill switch, trading sessions, and firm rule sets.</p>
 
-<div class="card" id="login-box" style="display:none">
-  <b>Sign in</b> <span style="font-size:11px;color:#8b949e">— session auth, MFA if enrolled</span>
-  <table><tr><td>user</td><td><input id="l-user" value="admin" size="10"></td>
-  <td>password</td><td><input id="l-pass" type="password" size="14"></td>
-  <td>TOTP</td><td><input id="l-totp" size="7" placeholder="if MFA"></td></tr></table>
-  <button onclick="doLogin()">Sign in</button>
-  <span id="l-err" style="color:#f85149;font-size:11px"></span>
+      <div class="card">
+        <h3>Kill switch — always visible</h3>
+        <div id="killswitch"></div>
+      </div>
+
+      <div class="card">
+        <h3>Sessions (U2)</h3>
+        <div id="sessions">loading…</div>
+      </div>
+
+      <div class="card">
+        <h3>Compliance rule sets</h3>
+        <div class="grid-2" id="compliance"></div>
+      </div>
+    </section>
+
+    <!-- ── TRADING ──────────────────────────────────── -->
+    <section id="tab-trading" hidden>
+      <h1 class="page-title">Trading</h1>
+      <p class="page-sub">Paper gateway only. Live submission stays disabled until sign-off.</p>
+
+      <div class="card">
+        <h3>Register account</h3>
+        <div class="fields">
+          <div><label>Account ID</label><input id="a-id" value="paper-10k"></div>
+          <div><label>Balance ($)</label><input id="a-balance" value="10000"></div>
+        </div>
+        <button class="btn primary" onclick="registerAccount()">Register account</button>
+        <pre class="out" id="a-out"></pre>
+      </div>
+
+      <div class="card">
+        <h3>Order ticket — paper gateway</h3>
+        <div class="fields">
+          <div><label>Account</label><input id="t-account" value="paper-10k"></div>
+          <div><label>Side</label><select id="t-side"><option>long</option><option>short</option></select></div>
+          <div><label>Risk %</label><input id="t-risk" value="0.5"></div>
+          <div><label>Stop loss ($)</label><input id="t-sl" value="2588"></div>
+          <div><label>Take profit ($)</label><input id="t-tp" value="2624"></div>
+          <div><label>Idempotency key</label><input id="t-key" value="ticket-1"></div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" onclick="submitTicket()">Submit (paper)</button>
+          <button class="btn danger" disabled title="Enabled only after Phase 4 sign-off">Submit LIVE</button>
+        </div>
+        <pre class="out" id="ticket-result"></pre>
+      </div>
+
+      <div class="card">
+        <h3>AI assistant — read / propose only</h3>
+        <div class="fields">
+          <div style="grid-column: 1 / -1"><label>Message</label><input id="ai-msg" value="Summarize my positions"></div>
+        </div>
+        <button class="btn" onclick="askAssistant()">Ask</button>
+        <pre class="out" id="ai-out"></pre>
+      </div>
+    </section>
+
+    <!-- ── ANALYTICS ────────────────────────────────── -->
+    <section id="tab-analytics" hidden>
+      <h1 class="page-title">Analytics</h1>
+      <p class="page-sub">Real bars (delayed), deterministic backtests, bar-by-bar replay. Not live, not a forecast.</p>
+
+      <div class="card">
+        <h3>Chart — real bars + backtest overlay</h3>
+        <div class="actions" style="margin-bottom:14px">
+          <button class="btn primary" onclick="loadChart()">Load 2025-01-02 → 08 · 15m · EMA cross</button>
+          <span class="muted" id="chart-label"></span>
+        </div>
+        <svg id="candles" width="100%" height="220" viewBox="0 0 1000 220" preserveAspectRatio="none"></svg>
+        <svg id="equity" width="100%" height="140" viewBox="0 0 1000 140" preserveAspectRatio="none" style="margin-top:10px"></svg>
+        <div class="muted" id="chart-summary" style="margin-top:10px"></div>
+      </div>
+
+      <div class="card">
+        <h3>Trade replay — bar by bar</h3>
+        <button class="btn" onclick="loadReplay()">Load replay (2025-01-02 → 08 · 15m)</button>
+        <input type="range" id="rp-slider" min="0" max="0" value="0" oninput="showBar(parseInt(this.value))">
+        <span class="muted" id="rp-pos"></span>
+        <svg id="rp-svg" width="100%" height="220" viewBox="0 0 1000 220" preserveAspectRatio="none"></svg>
+        <div id="rp-status" style="font-size:13px; margin-top:8px"></div>
+      </div>
+    </section>
+
+    <!-- ── AUDIT ────────────────────────────────────── -->
+    <section id="tab-audit" hidden>
+      <h1 class="page-title">Audit Log</h1>
+      <p class="page-sub">Every decision the platform makes is recorded here.</p>
+      <div class="card"><div id="feed"></div></div>
+    </section>
+  </main>
 </div>
 
 <script>
 let TOKEN = sessionStorage.getItem('dsh_token') || '';
 
+/* ── tab switching ─────────────────────────────────────── */
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    document.querySelectorAll('main > section').forEach(s => s.hidden = true);
+    document.getElementById('tab-' + item.dataset.tab).hidden = false;
+  });
+});
+
+/* ── api helper ────────────────────────────────────────── */
 async function j(url, opts) {
   opts = opts || {};
   opts.headers = Object.assign({'Authorization': 'Bearer ' + TOKEN},
     opts.headers || {});
   const r = await fetch(url, opts);
-  if (r.status === 401) { showLogin('session expired or missing'); }
+  if (r.status === 401) { showLogin('Session expired or missing — sign in again.'); }
   return {ok: r.ok, status: r.status, body: await r.json().catch(() => ({}))};
 }
 
-async function showLogin(msg) {
-  document.getElementById('login-box').style.display = 'block';
+function showLogin(msg) {
+  document.getElementById('login-overlay').hidden = false;
   document.getElementById('l-err').textContent = msg || '';
 }
 
@@ -123,72 +345,90 @@ async function doLogin() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({username: v('l-user'), password: v('l-pass'),
                           totp: v('l-totp') || null})});
-  if (!r.ok) { showLogin('login failed: ' + (await r.json()).detail); return; }
+  if (!r.ok) { showLogin('Login failed — check the password.'); return; }
   TOKEN = (await r.json()).token;
   sessionStorage.setItem('dsh_token', TOKEN);
-  document.getElementById('login-box').style.display = 'none';
+  document.getElementById('login-overlay').hidden = true;
   refresh();
 }
 
 (async () => {
   const s = await fetch('/api/platform/auth/state').then(r => r.json());
-  if (!s.configured) showLogin('AUTH NOT CONFIGURED — set DSH_ADMIN_PASSWORD; mutating endpoints fail closed');
+  if (!s.configured) showLogin('AUTH NOT CONFIGURED — set DSH_ADMIN_PASSWORD; mutating endpoints fail closed.');
   else if (!TOKEN) showLogin('');
 })();
 
-
+/* ── refresh: pull all state ───────────────────────────── */
 async function refresh() {
   const ov = await j('/api/platform/overview');
   if (ov.ok) {
     document.getElementById('accounts').innerHTML = ov.body.accounts.map(a =>
-      `<div class="card"><b>${a.account_id}</b> <span class="label ${a.mode==='paper'?'DELAYED':'LIVE'}">${a.mode}</span><br>
-       equity $${a.equity?.toFixed(2)} · positions ${a.open_positions}<br>
-       risk: <span class="${a.risk_status==='ok'?'ok':'bad'}">${a.risk_status}</span> ·
-       compliance: <span class="${a.compliance_status==='ok'?'ok':(a.compliance_status==='breached'?'bad':'warn')}">${a.compliance_status}</span></div>`).join('')
-      || '<div class="card">no accounts registered</div>';
-    document.getElementById('sources').innerHTML = ov.body.data_sources.map(s =>
-      `<tr><td><span class="label ${s.label}">${s.label}</span></td><td>${s.source}</td><td>${s.detail}</td></tr>`).join('');
+      `<div class="card" style="margin:0"><b>${a.account_id}</b>
+       <span class="pill ${a.mode==='paper'?'DELAYED':'LIVE'}">${a.mode}</span>
+       <div class="stat-line">
+         <span>equity <b class="mono">$${a.equity?.toFixed(2)}</b></span>
+         <span>positions <b>${a.open_positions}</b></span>
+       </div>
+       <div class="stat-line">
+         <span>risk <span class="${a.risk_status==='ok'?'ok':'bad'}">${a.risk_status}</span></span>
+         <span>compliance <span class="${a.compliance_status==='ok'?'ok':(a.compliance_status==='breached'?'bad':'warn')}">${a.compliance_status}</span></span>
+       </div></div>`).join('')
+      || '<div class="muted">No accounts registered yet — create one in Trading.</div>';
+    document.getElementById('sources').innerHTML =
+      `<tr><th></th><th>Source</th><th>What it is</th></tr>` +
+      ov.body.data_sources.map(s =>
+      `<tr><td><span class="pill ${s.label}">${s.label}</span></td><td>${s.source}</td><td class="muted">${s.detail}</td></tr>`).join('');
     const ks = ov.body.kill_switch;
     document.getElementById('killswitch').innerHTML =
-      `global: <span class="${ks.global?'bad':'ok'}">${ks.global?'ENGAGED':'clear'}</span>
-       <button class="danger" onclick="kill('global','engage')">ENGAGE</button>
-       <button onclick="kill('global','disengage')">Disengage (human)</button>
-       <br><span style="font-size:11px;color:#8b949e">sign-off: ${JSON.stringify(ov.body.live_signoff) ?? 'none — live controls disabled'}</span>`;
+      `<div class="ks-state">Global state:
+         <span class="${ks.global?'bad':'ok'}">${ks.global?'● ENGAGED — all entries blocked':'● CLEAR'}</span></div>
+       <div class="actions">
+         <button class="btn danger" onclick="kill('global','engage')">Engage kill switch</button>
+         <button class="btn" onclick="kill('global','disengage')">Disengage (human)</button>
+       </div>
+       <div class="muted" style="margin-top:12px">Live sign-off: ${JSON.stringify(ov.body.live_signoff) ?? 'none — live controls disabled'}</div>`;
+    document.getElementById('topbar-status').innerHTML =
+      `kill switch <span class="${ks.global?'bad':'ok'}" style="font-weight:700">${ks.global?'ENGAGED':'CLEAR'}</span>`;
   }
   const rs = await j('/api/platform/compliance/rulesets');
   if (rs.ok) document.getElementById('compliance').innerHTML = rs.body.map(r =>
-    `<div class="card"><b>${r.firm} ${r.program} ${r.version}</b>
-     <span class="label ${r.status==='verified'?'LIVE':'STALE'}">${r.status}</span><br>
-     grants permission: <span class="${r.grants_permission?'bad':'ok'}">${r.grants_permission}</span>
-     <table>${r.rules_with_clauses.map(x =>
-       `<tr><td>${x.rule}</td><td>${x.definition}</td><td>§ ${x.citations.join(', ')||'—'}</td></tr>`).join('')}</table></div>`).join('')
-    || '<div class="card">no rule sets stored</div>';
+    `<div class="card" style="margin:0"><b>${r.firm} ${r.program} ${r.version}</b>
+     <span class="pill ${r.status==='verified'?'LIVE':'STALE'}">${r.status}</span>
+     <div class="stat-line">grants permission:
+       <span class="${r.grants_permission?'bad':'ok'}">${r.grants_permission}</span></div>
+     <table style="margin-top:10px">${r.rules_with_clauses.map(x =>
+       `<tr><td>${x.rule}</td><td>${x.definition}</td><td class="muted">§ ${x.citations.join(', ')||'—'}</td></tr>`).join('')}</table></div>`).join('')
+    || '<div class="muted">No rule sets stored.</div>';
   const sess = await j('/api/platform/accounts/' +
     (document.getElementById('t-account').value || 'paper-10k') + '/session-status');
   if (sess.ok) {
     const s = sess.body;
     const w = s.window;
     document.getElementById('sessions').innerHTML =
-      `<b>${s.account_id}</b> profile: ${s.profile ?? '—'} ·
-       status: <span class="label ${s.status === 'active' ? 'LIVE' : (s.status === 'unbound' ? 'STALE' : 'DELAYED')}">${s.status}</span><br>` +
-      (w ? `window ${new Date(w.start_ms).toISOString()} → ${new Date(w.end_ms).toISOString()} ·
+      `<b>${s.account_id}</b> · profile: ${s.profile ?? '—'} ·
+       status: <span class="pill ${s.status === 'active' ? 'LIVE' : (s.status === 'unbound' ? 'STALE' : 'DELAYED')}">${s.status}</span><br>` +
+      (w ? `<span class="muted">window ${new Date(w.start_ms).toISOString()} → ${new Date(w.end_ms).toISOString()} ·
        cutoff ${new Date(w.cutoff_ms).toISOString()} · flatten ${new Date(w.flatten_ms).toISOString()} ·
-       entries ${w.entries}/${w.max_trades ?? '∞'}<br>` : '') +
-      (s.last_run ? `last run: ${s.last_run.date} ${s.last_run.status} ${s.last_run.reason || ''}` : 'no runs recorded');
+       entries ${w.entries}/${w.max_trades ?? '∞'}</span><br>` : '') +
+      (s.last_run ? `<span class="muted">last run: ${s.last_run.date} ${s.last_run.status} ${s.last_run.reason || ''}</span>` : '<span class="muted">no runs recorded</span>');
   }
   const runs = await j('/api/platform/deployments/default/sessions');
   if (runs.ok && runs.body.length) {
-    document.getElementById('sessions').innerHTML += '<table>' + runs.body.slice(-5).map(r =>
-      `<tr><td>${r.date}</td><td>${r.account_id}</td><td>${r.status}</td><td>${r.reason || ''}</td><td>pnl ${r.pnl}</td></tr>`).join('') + '</table>';
+    document.getElementById('sessions').innerHTML += '<table style="margin-top:12px">' +
+      `<tr><th>date</th><th>account</th><th>status</th><th>reason</th><th>pnl</th></tr>` +
+      runs.body.slice(-5).map(r =>
+      `<tr><td>${r.date}</td><td>${r.account_id}</td><td>${r.status}</td><td>${r.reason || ''}</td><td class="mono">${r.pnl}</td></tr>`).join('') + '</table>';
   }
   const log = await j('/api/platform/execution-log?limit=12');
   if (log.ok) document.getElementById('feed').innerHTML = log.body.map(e =>
-    `<div>${e.ts_ms ? new Date(e.ts_ms).toISOString() : ''} — ${e.event} ${JSON.stringify(e).slice(0,140)}</div>`).join('');
+    `<div><span class="mono">${e.ts_ms ? new Date(e.ts_ms).toISOString() : ''}</span> — ${e.event} ${JSON.stringify(e).slice(0,140)}</div>`).join('')
+    || '<div class="muted">Nothing logged yet.</div>';
 }
 
+/* ── actions ───────────────────────────────────────────── */
 async function kill(scope, action) {
-  const actor = prompt('your name (audit):'); if (!actor) return;
-  const reason = prompt('reason (audit):'); if (!reason) return;
+  const actor = prompt('Your name (recorded in audit):'); if (!actor) return;
+  const reason = prompt('Reason (recorded in audit):'); if (!reason) return;
   await j('/api/platform/kill-switch', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({scope, action, actor, reason})});
   refresh();
@@ -221,19 +461,20 @@ async function askAssistant() {
   document.getElementById('ai-out').textContent = JSON.stringify(r.body, null, 1);
 }
 
+/* ── charts ────────────────────────────────────────────── */
 async function loadChart() {
   const S = 1735776000000, E = 1736294400000;
   const b = await j(`/api/platform/charts/bars?tf=15m&start_ms=${S}&end_ms=${E}`);
   const bt = await j(`/api/platform/charts/backtest?tf=15m&start_ms=${S}&end_ms=${E}`);
-  if (!b.ok || !bt.ok) { document.getElementById('chart-label').textContent = 'chart data unavailable'; return; }
+  if (!b.ok || !bt.ok) { document.getElementById('chart-label').textContent = 'Chart data unavailable.'; return; }
   document.getElementById('chart-label').textContent =
     b.body.source_label + ' — ' + b.body.source_detail;
   drawCandles(b.body.bars, bt.body.trades);
-  drawLine(document.getElementById('equity'), bt.body.equity, '#3fb950',
-           bt.body.drawdown_pct, '#f85149');
+  drawLine(document.getElementById('equity'), bt.body.equity, '#34c07c',
+           bt.body.drawdown_pct, '#e5544f');
   const s = bt.body.summary;
   document.getElementById('chart-summary').textContent =
-    `${s.n_trades} trades · final equity $${s.final_equity.toFixed(2)} · max DD ${s.max_drawdown_pct.toFixed(2)}%`;
+    `${s.n_trades} trades · final equity $${s.final_equity.toFixed(2)} · max drawdown ${s.max_drawdown_pct.toFixed(2)}%`;
 }
 
 function drawCandles(bars, trades) {
@@ -245,14 +486,14 @@ function drawCandles(bars, trades) {
   const tIdx = Object.fromEntries(bars.map((b, i) => [b.t, i]));
   let s = '';
   bars.forEach((b, i) => {
-    const x = i * (W / n) + 1, up = b.c >= b.o, col = up ? '#3fb950' : '#f85149';
+    const x = i * (W / n) + 1, up = b.c >= b.o, col = up ? '#34c07c' : '#e5544f';
     s += `<line x1="${x + bw / 2}" y1="${y(b.h)}" x2="${x + bw / 2}" y2="${y(b.l)}" stroke="${col}" stroke-width="1"/>` +
          `<rect x="${x}" y="${Math.min(y(b.o), y(b.c))}" width="${bw}" height="${Math.max(1, Math.abs(y(b.c) - y(b.o)))}" fill="${col}"/>`;
   });
   (trades || []).forEach(t => {
     const i = tIdx[t.entry_time];
     if (i === undefined) return;
-    const x = i * (W / n) + bw / 2, col = t.side === 'LONG' ? '#58a6ff' : '#d29922';
+    const x = i * (W / n) + bw / 2, col = t.side === 'LONG' ? '#4f8cff' : '#d99a3d';
     s += `<path d="M ${x} ${t.side === 'LONG' ? H - 2 : 2} l -4 6 l 8 0 z" fill="${col}"/><text x="${x - 3}" y="${t.side === 'LONG' ? H - 12 : 14}" fill="${col}" font-size="8">${t.reason[0]}</text>`;
   });
   svg.innerHTML = s;
@@ -266,19 +507,20 @@ function drawLine(svg, series, color, dd, ddColor) {
   const y = v => pad + (hi - v) / (hi - lo || 1) * (H - 2 * pad);
   let s = `<polyline fill="none" stroke="${color}" stroke-width="1.5" points="${series.map((p, i) => x(i) + ',' + y(p.v)).join(' ')}"/>`;
   if (dd) {
-    const dlo = 0, dhi = Math.max(...dd.map(p => p.v), 1);
+    const dhi = Math.max(...dd.map(p => p.v), 1);
     const dy = v => pad + v / dhi * (H - 2 * pad);
     s += `<polyline fill="none" stroke="${ddColor}" stroke-width="1" stroke-dasharray="3,2" points="${dd.map((p, i) => x(i) + ',' + dy(p.v)).join(' ')}"/>`;
   }
   svg.innerHTML = s;
 }
 
-let RP = null;   // replay payload
+/* ── replay ────────────────────────────────────────────── */
+let RP = null;
 
 async function loadReplay() {
   const S = 1735776000000, E = 1736294400000;
   const r = await j(`/api/platform/charts/replay?tf=15m&start_ms=${S}&end_ms=${E}`);
-  if (!r.ok) { document.getElementById('rp-status').textContent = 'replay unavailable'; return; }
+  if (!r.ok) { document.getElementById('rp-status').textContent = 'Replay unavailable.'; return; }
   RP = r.body;
   document.getElementById('rp-slider').max = RP.times.length - 1;
   document.getElementById('rp-slider').value = 0;
@@ -290,8 +532,6 @@ function showBar(i) {
   document.getElementById('rp-pos').textContent =
     `bar ${i + 1}/${RP.times.length} · ${RP.times[i]}`;
   const svg = document.getElementById('rp-svg');
-  const [o, h, l, c] = RP.ohlc[i];
-  // window of the last 120 bars up to i
   const from = Math.max(0, i - 119), win = RP.ohlc.slice(from, i + 1);
   const lo = Math.min(...win.map(x => x[2])), hi = Math.max(...win.map(x => x[1]));
   const y = p => 10 + (hi - p) / (hi - lo || 1) * 200;
@@ -299,17 +539,16 @@ function showBar(i) {
   let s = '';
   win.forEach((b, k) => {
     const x = k * (1000 / win.length) + 1, up = b[3] >= b[0];
-    const col = up ? '#3fb950' : '#f85149';
+    const col = up ? '#34c07c' : '#e5544f';
     s += `<line x1="${x + bw / 2}" y1="${y(b[1])}" x2="${x + bw / 2}" y2="${y(b[2])}" stroke="${col}"/>` +
          `<rect x="${x}" y="${Math.min(y(b[0]), y(b[3]))}" width="${bw}" height="${Math.max(1, Math.abs(y(b[3]) - y(b[0])))}" fill="${col}"/>`;
   });
-  // open-trade markers at the current bar
-  (RP.open_trades[i] || []).forEach(tid => { s += `<text x="${940}" y="${18 + tid * 12}" fill="#58a6ff" font-size="10">open #${tid}</text>`; });
+  (RP.open_trades[i] || []).forEach(tid => { s += `<text x="${940}" y="${18 + tid * 12}" fill="#4f8cff" font-size="10">open #${tid}</text>`; });
   svg.innerHTML = s;
   const closed = RP.closed_on_bar[i] || [];
   const dd = RP.drawdown_pct[i];
   document.getElementById('rp-status').innerHTML =
-    `equity <b>$${RP.equity[i].toFixed(2)}</b> · drawdown ` +
+    `equity <b class="mono">$${RP.equity[i].toFixed(2)}</b> · drawdown ` +
     `<span class="${dd > 5 ? 'bad' : dd > 2 ? 'warn' : 'ok'}">${dd.toFixed(2)}%</span>` +
     (closed.length ? ` · closed: ${closed.map(t => `#${t.id} ${t.side} ${t.reason} ${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(2)}`).join(', ')}` : '');
 }
