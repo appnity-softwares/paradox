@@ -65,13 +65,18 @@ def test_trade_markers_reference_chart_times(client):
                                "max_hold", "eod")
 
 
-def test_charts_require_viewer_session(client):
-    # The shared fixture is authenticated; an anonymous client is not.
+def test_charts_public_read(client):
+    # Chart reads are market data only (no account info) and are public
+    # so the client-facing portal needs no login. Everything else
+    # (accounts, orders, kill switch, admin) stays auth-gated.
     from fastapi.testclient import TestClient
     from dashboard.app import app
     anon = TestClient(app)
     assert anon.get(f"/api/platform/charts/bars?tf=15m&start_ms={START_MS}"
-                    f"&end_ms={END_MS}").status_code == 401
+                    f"&end_ms={END_MS}").status_code == 200
+    # Writes and account data stay protected.
+    assert anon.get("/api/platform/overview").status_code in (401, 403)
+    assert anon.post("/api/platform/kill-switch", json={}).status_code in (401, 403)
 
 
 def test_charts_reject_bad_ranges(client):

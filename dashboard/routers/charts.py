@@ -37,7 +37,7 @@ def _bars(symbol: str, tf: str, start_ms: int, end_ms: int) -> pd.DataFrame:
 @router.get("/bars")
 def bars(symbol: str = "XAUUSD", tf: str = "15m",
          start_ms: int = Query(...), end_ms: int = Query(...),
-         user: dict = Depends(require("viewer"))) -> dict:
+) -> dict:
     df = _bars(symbol, tf, start_ms, end_ms)
     rows = [{"t": str(ts), "o": float(r["open"]), "h": float(r["high"]),
              "l": float(r["low"]), "c": float(r["close"]),
@@ -53,8 +53,7 @@ def backtest(symbol: str = "XAUUSD", tf: str = "15m",
              start_ms: int = Query(...), end_ms: int = Query(...),
              fast: int = 20, slow: int = 60, sl_atr_mult: float = 1.5,
              rr: float = 1.5, session: str = "london_ny",
-             risk_pct: float = 0.5,
-             user: dict = Depends(require("viewer"))) -> dict:
+             risk_pct: float = 0.5) -> dict:
     df = _bars(symbol, tf, start_ms, end_ms)
     cfg = StrategyConfig(sl_method="atr", sl_atr_mult=sl_atr_mult, rr=rr,
                          session=session, risk_pct=risk_pct)
@@ -91,7 +90,7 @@ def replay(symbol: str = "XAUUSD", tf: str = "15m",
            fast: int = 20, slow: int = 60, sl_atr_mult: float = 1.5,
            rr: float = 1.5, session: str = "london_ny",
            risk_pct: float = 0.5,
-           user: dict = Depends(require("viewer"))) -> dict:
+) -> dict:
     """Bar-by-bar replay state: for every bar index, which trades are
     open, which closed on that bar, and the equity at that point.
     Deterministic — the same data and config always yield the same

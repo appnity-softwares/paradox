@@ -160,18 +160,6 @@
   </div>
 </header>
 
-<div id="login-overlay" hidden>
-  <div class="login-card" id="login-box">
-    <div class="login-title">Sign in</div>
-    <div class="login-sub">Client portal access</div>
-    <label>User<input id="l-user" value="admin" autocomplete="username"></label>
-    <label>Password<input id="l-pass" type="password" autocomplete="current-password"></label>
-    <label>TOTP <span class="muted">(only if MFA is enabled)</span><input id="l-totp" placeholder="6-digit code" inputmode="numeric"></label>
-    <button class="btn primary wide" onclick="doLogin()">Sign in</button>
-    <div id="l-err" class="form-error"></div>
-  </div>
-</div>
-
 <nav class="tabs">
   <div class="tab active" data-tab="trading">Trading</div>
   <div class="tab" data-tab="performance">Performance</div>
@@ -288,7 +276,6 @@
 </main>
 
 <script>
-let TOKEN = sessionStorage.getItem('dsh_token') || '';
 const HOLDOUT_START = 1778995200000;   // data window ends here (frozen holdout beyond)
 
 /* ── tabs ──────────────────────────────────────────────── */
@@ -300,37 +287,13 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   if (t.dataset.tab === 'trading' && !STATE.bars.length) loadChart();
 }));
 
-/* ── auth ──────────────────────────────────────────────── */
+/* ── data (public read — market data only, no accounts) ─ */
 async function j(url, opts) {
-  opts = opts || {};
-  opts.headers = Object.assign({'Authorization': 'Bearer ' + TOKEN}, opts.headers || {});
-  const r = await fetch(url, opts);
-  if (r.status === 401) showLogin('Session expired — sign in again.');
+  const r = await fetch(url, opts || {});
   return {ok: r.ok, status: r.status, body: await r.json().catch(() => ({}))};
 }
-function showLogin(msg) {
-  document.getElementById('login-overlay').hidden = false;
-  document.getElementById('l-err').textContent = msg || '';
-}
-async function doLogin() {
-  const r = await fetch('/api/platform/auth/login', {method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({username: v('l-user'), password: v('l-pass'),
-                          totp: v('l-totp') || null})});
-  if (!r.ok) { showLogin('Login failed — check the password.'); return; }
-  TOKEN = (await r.json()).token;
-  sessionStorage.setItem('dsh_token', TOKEN);
-  document.getElementById('login-overlay').hidden = true;
-  loadChart();
-}
-(async () => {
-  const s = await fetch('/api/platform/auth/state').then(r => r.json());
-  if (!s.configured) showLogin('AUTH NOT CONFIGURED — set DSH_ADMIN_PASSWORD.');
-  else if (!TOKEN) showLogin('');
-})();
 
 const v = id => document.getElementById(id).value;
-
 /* ── trading chart ─────────────────────────────────────── */
 const STATE = { tf: '15m', days: 30, bars: [], trades: [] };
 
@@ -444,7 +407,7 @@ function drawEq(equity, dd) {
   svg.innerHTML = s;
 }
 
-if (TOKEN) loadChart();
+loadChart();
 </script>
 </body>
 </html>

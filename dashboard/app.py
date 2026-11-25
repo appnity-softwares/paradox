@@ -68,6 +68,13 @@ def vendor_lwcharts():
                         media_type="application/javascript")
 
 
+@app.get("/client")
+def client_portal():
+    """Simple client-facing portal (also selectable as the landing page)."""
+    return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "client.html"))
+
+
 @app.get("/admin")
 def admin():
     """Admin panel: UI routing, AI provider, platform controls."""

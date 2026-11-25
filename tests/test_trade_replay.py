@@ -69,7 +69,9 @@ def test_replay_closes_carry_pnl_and_reason(client):
         assert isinstance(c["pnl"], float)
 
 
-def test_replay_requires_viewer_session(client):
+def test_replay_public_read(client):
+    # Replay is market-data-only (no account info) — public read for the
+    # client-facing portal; account/write endpoints stay auth-gated.
     from fastapi.testclient import TestClient
     from dashboard.app import app
-    assert TestClient(app).get(URL).status_code == 401
+    assert TestClient(app).get(URL).status_code == 200

@@ -22,6 +22,7 @@ from __future__ import annotations
 import itertools
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Iterator
 
 import numpy as np
@@ -87,21 +88,63 @@ class OandaStreamSource:
 
     def __init__(self, account_id: str, token: str,
                  instrument: str = "XAU_USD",
-                 env: str = "practice"):
+                 env: str = "practice",
+                 poll_seconds: float = 1.0):
         if not account_id or not token:
             raise ValueError("OANDA account_id and token are required")
+        if poll_seconds <= 0:
+            raise ValueError("poll_seconds must be positive")
+        self.poll_seconds = poll_seconds
         self.account_id = account_id
         self.token = token
         self.instrument = instrument
         self.env = env
 
+    def _endpoint(self) -> str:
+        host = ("api-fxpractice.oanda.com" if self.env == "practice"
+                else "api-fxtrade.oanda.com")
+        return (f"https://{host}/v3/instruments/{self.instrument}"
+                f"/prices/instrument={self.instrument}")
+
+    def _parse_price(self, msg: dict) -> Tick | None:
+        """Parse one v20 pricing message (offline-testable, no network)."""
+        if msg.get("type") != "PRICE":
+            return None
+        bids = msg.get("bids") or []
+        asks = msg.get("asks") or []
+        if not bids or not asks:
+            return None
+        bid = float(bids[0]["price"])
+        ask = float(asks[0]["price"])
+        ts = msg.get("time") or ""
+        try:
+            ms = int(datetime.fromisoformat(
+                ts.replace("Z", "+00:00")).timestamp() * 1000)
+        except ValueError:
+            ms = int(time.time() * 1000)
+        return Tick(ms, bid, ask)
+
     def __iter__(self) -> Iterator[Tick]:
-        # Implemented with the v20 streaming endpoint at integration
-        # time; kept out of the deterministic core so tests never hit
-        # the network.
-        raise NotImplementedError(
-            "OandaStreamSource: integrate v20 pricing stream at "
-            "setup time (docs/deployment_topologies.md)")
+        """Poll the v20 pricing REST endpoint (works on free practice
+        accounts; no streaming chunk parsing needed). Network access is
+        deliberately inside __iter__ so tests inject messages via
+        _parse_price instead of hitting the network."""
+        import httpx
+        headers = {"Authorization": f"Bearer {self.token}",
+                   "Accept-Datetime-Format": "RFC3339"}
+        with httpx.Client(headers=headers, timeout=10.0) as client:
+            while True:
+                try:
+                    resp = client.get(self._endpoint(),
+                                      params={"count": 1})
+                    if resp.status_code == 200:
+                        for msg in resp.json().get("prices", []):
+                            tick = self._parse_price(msg)
+                            if tick is not None:
+                                yield tick
+                except (httpx.HTTPError, ValueError, KeyError):
+                    pass  # transient network error: retry next poll
+                time.sleep(self.poll_seconds)
 
 
 # ---------------------------------------------------------------------------
