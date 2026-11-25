@@ -68,6 +68,8 @@
   }
   .card h3 { margin: 0 0 14px; font-size: 12.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim); }
   .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .grid-term { display: grid; grid-template-columns: 1fr 340px; gap: 16px; align-items: start; }
+  @media (max-width: 980px) { .grid-term { grid-template-columns: 1fr; } }
   .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
   .muted { color: var(--text-faint); font-size: 12.5px; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
@@ -159,79 +161,89 @@
 </header>
 
 <nav class="tabs" id="tabs">
-  <div class="tab active" data-tab="trade">Trade</div>
-  <div class="tab" data-tab="charts">Charts</div>
+  <div class="tab active" data-tab="terminal">Terminal</div>
   <div class="tab" data-tab="strategy">Strategy</div>
   <div class="tab" data-tab="propfirm">Prop Firm</div>
   <div class="tab" data-tab="copilot">Copilot</div>
-  <div class="tab" data-tab="agents">Agents</div>
-  <div class="tab" data-tab="metrics">Data &amp; Metrics</div>
-  <div class="tab" data-tab="mt5">MT5</div>
+  <div class="tab" data-tab="system">System</div>
 </nav>
 
 <main>
-  <section id="tab-trade">
-    <h1 class="page-title">Trade Desk</h1>
-    <p class="page-sub">Account state, order ticket and open positions.</p>
-
-    <div class="stats" style="margin-bottom:16px" id="acct-stats">
-      <div class="stat"><div class="k">Balance</div><div class="v mono" id="d-balance">—</div></div>
-      <div class="stat"><div class="k">Equity</div><div class="v mono" id="d-equity">—</div></div>
-      <div class="stat"><div class="k">Floating PnL</div><div class="v mono" id="d-float">—</div></div>
-      <div class="stat"><div class="k">Free margin</div><div class="v mono" id="d-margin">—</div></div>
-      <div class="stat"><div class="k">Open positions</div><div class="v mono" id="d-count">—</div></div>
-    </div>
-
-    <div class="grid-2">
-      <div class="card">
-        <h3>Order ticket · XAUUSD</h3>
-        <div class="fields">
-          <div><label>Volume (lots)</label>
-            <select id="od-vol">
-              <option>0.01</option><option>0.05</option><option selected>0.10</option>
-              <option>0.25</option><option>0.50</option><option>1.00</option>
-            </select></div>
-          <div><label>SL distance ($)</label><input id="od-sl" value="5.0"></div>
-          <div><label>TP distance ($)</label><input id="od-tp" value="10.0"></div>
+  <section id="tab-terminal">
+    <div class="grid-term">
+      <div class="card" style="margin-bottom:0">
+        <div class="tf-row" id="chart-tfs" style="margin-bottom:12px">
+          <div class="tf" data-tf="1m">1m</div>
+          <div class="tf" data-tf="5m">5m</div>
+          <div class="tf active" data-tf="15m">15m</div>
+          <div class="tf" data-tf="30m">30m</div>
+          <div class="tf" data-tf="1h">1h</div>
+          <div class="tf" data-tf="4h">4h</div>
+          <div class="tf" data-tf="1d">1D</div>
         </div>
-        <div class="tf-row" style="margin-bottom:12px">
-          <button class="btn sell" style="flex:1" onclick="sendOrder('SELL')">SELL MARKET</button>
-          <button class="btn buy" style="flex:1" onclick="sendOrder('BUY')">BUY MARKET</button>
+        <div class="mono muted" id="ohlc-readout" style="margin-bottom:10px">—</div>
+        <svg id="main-chart" width="100%" height="420" viewBox="0 0 1100 420" preserveAspectRatio="none"></svg>
+        <div class="muted" id="chart-note" style="margin-top:10px"></div>
+      </div>
+
+      <div>
+        <div class="stats" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
+          <div class="stat"><div class="k">Balance</div><div class="v mono" id="d-balance">—</div></div>
+          <div class="stat"><div class="k">Equity</div><div class="v mono" id="d-equity">—</div></div>
+          <div class="stat"><div class="k">Floating PnL</div><div class="v mono" id="d-float">—</div></div>
+          <div class="stat"><div class="k">Open positions</div><div class="v mono" id="d-count">—</div></div>
         </div>
-        <div class="muted" id="od-feedback"></div>
-      </div>
 
-      <div class="card">
-        <h3>Open positions</h3>
-        <div class="scroll"><table id="pos-table"></table></div>
-        <div style="margin-top:12px"><button class="btn danger" onclick="closeAll()">Close all positions</button></div>
-      </div>
-    </div>
-  </section>
+        <div class="card">
+          <h3>Order ticket · XAUUSD</h3>
+          <div class="fields">
+            <div><label>Volume (lots)</label>
+              <select id="od-vol">
+                <option>0.01</option><option>0.05</option><option selected>0.10</option>
+                <option>0.25</option><option>0.50</option><option>1.00</option>
+              </select></div>
+            <div><label>SL distance ($)</label><input id="od-sl" value="5.0"></div>
+            <div><label>TP distance ($)</label><input id="od-tp" value="10.0"></div>
+          </div>
+          <div class="tf-row" style="margin-bottom:12px">
+            <button class="btn sell" style="flex:1" onclick="sendOrder('SELL')">SELL MARKET</button>
+            <button class="btn buy" style="flex:1" onclick="sendOrder('BUY')">BUY MARKET</button>
+          </div>
+          <div class="muted" id="od-feedback"></div>
+        </div>
 
-  <section id="tab-charts" hidden>
-    <h1 class="page-title">Charts</h1>
-    <p class="page-sub">Real recorded bars from the tick store. Delayed by definition — never presented as live.</p>
-    <div class="card">
-      <div class="tf-row" id="chart-tfs" style="margin-bottom:12px">
-        <div class="tf" data-tf="1m">1m</div>
-        <div class="tf" data-tf="5m">5m</div>
-        <div class="tf active" data-tf="15m">15m</div>
-        <div class="tf" data-tf="30m">30m</div>
-        <div class="tf" data-tf="1h">1h</div>
-        <div class="tf" data-tf="4h">4h</div>
-        <div class="tf" data-tf="1d">1D</div>
+        <div class="card">
+          <h3>Open positions</h3>
+          <div class="scroll"><table id="pos-table"></table></div>
+          <div style="margin-top:12px"><button class="btn danger" onclick="closeAll()">Close all positions</button></div>
+        </div>
       </div>
-      <div class="mono muted" id="ohlc-readout" style="margin-bottom:10px">—</div>
-      <svg id="main-chart" width="100%" height="400" viewBox="0 0 1100 400" preserveAspectRatio="none"></svg>
     </div>
   </section>
 
   <section id="tab-strategy" hidden>
     <h1 class="page-title">Strategy Lab</h1>
-    <p class="page-sub">Run a deterministic backtest on real data. Same engine, same fills, every time.</p>
+    <p class="page-sub">Describe a strategy in plain English and the AI builds and tests it — or run a classic backtest yourself.</p>
+
     <div class="card">
-      <h3>Backtest setup</h3>
+      <h3>AI strategy builder</h3>
+      <div class="fields" style="grid-template-columns:1fr 150px 110px">
+        <div><label>Describe your strategy</label>
+          <input id="ai-text" placeholder="e.g. EMA 20/50 crossover with ATR stop loss, london session, 1% risk"
+                 onkeydown="if(event.key==='Enter')runBuilder()"></div>
+        <div><label>Timeframe</label>
+          <select id="ai-tf"><option>15m</option><option>1h</option></select></div>
+        <div><label>Walk-forward folds</label><input id="ai-folds" value="4"></div>
+      </div>
+      <button class="btn primary" onclick="runBuilder()">Build with AI</button>
+      <span class="muted" id="ai-status" style="margin-left:12px"></span>
+      <div class="stats" id="ai-metrics" hidden style="margin-top:16px"></div>
+      <svg id="ai-equity" width="100%" height="200" viewBox="0 0 1100 200" preserveAspectRatio="none" hidden style="margin-top:14px"></svg>
+      <div class="out" id="ai-explanation"></div>
+    </div>
+
+    <div class="card">
+      <h3>Classic backtest</h3>
       <div class="fields">
         <div><label>Strategy</label>
           <select id="bt-strategy" onchange="renderParams()">
@@ -316,34 +328,31 @@
     </div>
   </section>
 
-  <section id="tab-agents" hidden>
-    <h1 class="page-title">Agents</h1>
-    <p class="page-sub">Platform subsystems and their live status. Idle means no work queued — not an error.</p>
-    <div class="grid-3" id="agents-grid"></div>
-    <div class="card" style="margin-top:16px">
-      <h3>Recent activity</h3>
-      <div class="out" id="agents-activity">No activity yet.</div>
-    </div>
-  </section>
+  <section id="tab-system" hidden>
+    <h1 class="page-title">System</h1>
+    <p class="page-sub">Agents, data on disk, and provider connections — stated plainly.</p>
 
-  <section id="tab-metrics" hidden>
-    <h1 class="page-title">Data &amp; Metrics</h1>
-    <p class="page-sub">What the platform actually has on disk. No invented numbers.</p>
+    <div class="card">
+      <h3>Agents</h3>
+      <div class="grid-3" id="agents-grid"></div>
+      <div class="out" id="agents-activity" style="margin-top:14px">No activity yet.</div>
+    </div>
+
     <div class="card">
       <h3>Tick store</h3>
       <div class="stats" id="vertex-stats"></div>
       <div class="muted" id="vertex-format" style="margin-top:12px"></div>
     </div>
+
     <div class="card">
       <h3>Ingested coverage — XAUUSD</h3>
       <div class="scroll"><table id="coverage-table"></table></div>
     </div>
-  </section>
 
-  <section id="tab-mt5" hidden>
-    <h1 class="page-title">MT5 &amp; Data Providers</h1>
-    <p class="page-sub">What is actually connected right now, stated plainly.</p>
-    <div class="grid-2" id="mt5-providers"></div>
+    <div class="card">
+      <h3>MT5 &amp; data providers</h3>
+      <div class="grid-2" id="mt5-providers"></div>
+    </div>
   </section>
 </main>
 
@@ -391,14 +400,11 @@ async function doLogin() {
 
 /* ── tabs ──────────────────────────────────────────────── */
 const loaders = {
-  trade: () => { refreshAccount(); refreshPositions(); },
-  charts: () => loadMainChart(),
+  terminal: () => { refreshAccount(); refreshPositions(); loadMainChart(); },
   strategy: () => {},
   propfirm: () => initPropFirm(),
   copilot: () => {},
-  agents: () => loadAgents(),
-  metrics: () => { loadVertex(); loadCoverage(); },
-  mt5: () => loadMt5(),
+  system: () => { loadAgents(); loadVertex(); loadCoverage(); loadMt5(); },
 };
 document.querySelectorAll('#tabs .tab').forEach(t => t.addEventListener('click', () => {
   document.querySelectorAll('#tabs .tab').forEach(x => x.classList.remove('active'));
@@ -507,6 +513,7 @@ async function loadMainChart() {
     const last = bars[bars.length - 1];
     if (last) $('ohlc-readout').textContent =
       `O ${last.o.toFixed(2)}  H ${last.h.toFixed(2)}  L ${last.l.toFixed(2)}  C ${last.c.toFixed(2)}  ·  ${bars.length} bars · ${chartTf}`;
+    $('chart-note').textContent = 'Real recorded bars from the tick store — delayed by definition, never presented as live.';
   } catch (e) { $('ohlc-readout').textContent = 'Chart data unavailable: ' + e.message; }
 }
 function drawCandles(svg, bars, H) {
@@ -590,6 +597,46 @@ async function runBacktest() {
     $('bt-extra').textContent = extra;
     $('bt-results').hidden = false;
   } catch (e) { $('bt-status').textContent = '⚠ ' + e.message; }
+}
+
+/* ── AI strategy builder ───────────────────────────────── */
+async function runBuilder() {
+  const text = $('ai-text').value.trim();
+  if (text.length < 3) { $('ai-status').textContent = 'Describe the strategy first.'; return; }
+  $('ai-status').textContent = 'AI is designing and testing the strategy… (this can take a minute)';
+  try {
+    const r = await api('/api/build', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text, timeframe: $('ai-tf').value,
+        folds: parseInt($('ai-folds').value) || 4})});
+    $('ai-status').textContent = '✓ Done';
+    const m = r.metrics || {};
+    const cols = ['Total Return %', 'Win Rate %', 'Profit Factor', 'Sharpe Ratio',
+                  'Max Drawdown %', 'Total Trades'];
+    $('ai-metrics').innerHTML = cols.map(c =>
+      `<div class="stat"><div class="k">${esc(c)}</div><div class="v mono">${
+        typeof m[c] === 'number' ? m[c].toFixed(2) : esc(m[c] ?? '—')}</div></div>`).join('');
+    $('ai-metrics').hidden = false;
+    const eq = r.equity || [];
+    if (eq.length > 1) {
+      const svg = $('ai-equity');
+      const vals = eq.map(p => p[1]);
+      const lo = Math.min(...vals), hi = Math.max(...vals);
+      const pad = (hi - lo) * 0.08 || 1;
+      const y = vv => 14 + (hi + pad - vv) / (hi - lo + 2 * pad) * (200 - 28);
+      const x = i => 8 + i / (eq.length - 1) * (1100 - 68);
+      let s = '';
+      for (let g = 0; g <= 3; g++) {
+        const pv = lo - pad + (hi - lo + 2 * pad) * g / 3, py = y(pv);
+        s += `<line x1="8" y1="${py}" x2="1032" y2="${py}" stroke="#182130"/>` +
+             `<text x="1040" y="${py + 4}" fill="#5c6a7d" font-size="11" font-family="monospace">$${pv.toFixed(0)}</text>`;
+      }
+      s += `<polyline fill="none" stroke="#d4a843" stroke-width="1.8" points="${eq.map((p, i) => x(i) + ',' + y(p[1])).join(' ')}"/>`;
+      svg.innerHTML = s;
+      svg.hidden = false;
+    }
+    $('ai-explanation').textContent = r.explanation || '';
+  } catch (e) { $('ai-status').textContent = '⚠ ' + e.message; }
 }
 
 /* ── prop firm ─────────────────────────────────────────── */
@@ -738,7 +785,7 @@ async function loadMt5() {
 (async () => {
   const s = await fetch('/api/platform/auth/state').then(r => r.json()).catch(() => ({configured: true}));
   pollQuote();
-  loaders.trade();
+  loaders.terminal();
 })();
 setInterval(() => { refreshAccount(); refreshPositions(); }, 10000);
 </script>
