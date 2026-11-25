@@ -6,6 +6,7 @@ sign-off, and the AI assistant restricted to read/propose tools.
 """
 from __future__ import annotations
 
+import os
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -517,3 +518,58 @@ def session_status(account_id: str,
 def deployment_sessions(deployment_id: str,
                         user: dict = Depends(require("viewer"))) -> list[dict]:
     return PLATFORM.session_runs.for_deployment(deployment_id)
+
+
+# ── Admin panel (UI routing, AI provider, platform controls) ────────────────
+
+class AdminConfigRequest(BaseModel):
+    default_page: str | None = Field(
+        None, description="Which page `/` serves: terminal | client | legacy")
+    gemini_api_key: str | None = Field(
+        None, description="Set the Gemini key; empty string clears it; "
+                          "omit to leave unchanged")
+
+
+def _admin_config_view() -> dict:
+    from dashboard import admin_config
+    cfg = admin_config.load_config()
+    key_set = bool(os.getenv("GEMINI_API_KEY") or cfg["gemini_api_key"])
+    return {
+        "default_page": cfg["default_page"],
+        "valid_pages": list(admin_config.VALID_PAGES),
+        "ai_provider": "gemini" if key_set else "rule_based_fallback",
+        "ai_key_set": key_set,
+        "ai_key_source": "env" if os.getenv("GEMINI_API_KEY") else
+                         ("config" if cfg["gemini_api_key"] else "none"),
+        "mfa_enabled": bool(AUTH.totp_secret),
+        "auth_configured": AUTH.configured,
+    }
+
+
+@router.get("/admin/config")
+def admin_config_get(user: dict = Depends(require("admin"))) -> dict:
+    """Admin panel settings view. The API key itself is never returned."""
+    return _admin_config_view()
+
+
+@router.post("/admin/config")
+def admin_config_post(req: AdminConfigRequest,
+                      user: dict = Depends(require("admin"))) -> dict:
+    from dashboard import admin_config
+    if os.getenv("GEMINI_API_KEY") and req.gemini_api_key is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="GEMINI_API_KEY env var is set — remove it to let the "
+                   "admin panel manage the key")
+    patch: dict = {}
+    if req.default_page is not None:
+        if req.default_page not in admin_config.VALID_PAGES:
+            raise HTTPException(status_code=422,
+                                detail="default_page must be one of: "
+                                       + ", ".join(admin_config.VALID_PAGES))
+        patch["default_page"] = req.default_page
+    if req.gemini_api_key is not None:
+        patch["gemini_api_key"] = req.gemini_api_key.strip()
+    if patch:
+        admin_config.save_config(patch)
+    return _admin_config_view()

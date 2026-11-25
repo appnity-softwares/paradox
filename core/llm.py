@@ -96,8 +96,18 @@ class GeminiLLM(BaseLLM):
 
 
 def get_llm() -> BaseLLM | None:
-    """Return a configured LLM or None (rule-based fallback)."""
+    """Return a configured LLM or None (rule-based fallback).
+
+    Resolution order: GEMINI_API_KEY env var first, then the admin panel
+    config file (set from the admin UI). Explicit env always wins.
+    """
     key = os.getenv("GEMINI_API_KEY")
+    if not key:
+        try:
+            from dashboard.admin_config import load_config
+            key = load_config().get("gemini_api_key") or ""
+        except Exception:
+            key = ""
     if not key:
         return None
     return GeminiLLM(api_key=key)

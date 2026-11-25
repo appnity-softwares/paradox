@@ -47,11 +47,24 @@ app.include_router(platform_router.router)
 app.include_router(charts_router.router)
 
 
+PAGE_FILES = {"terminal": "terminal.html", "client": "client.html",
+              "legacy": "index.html"}
+
+
 @app.get("/")
 def index():
-    """Default landing: the full trading terminal."""
+    """Default landing: whichever page the admin panel selects."""
+    from dashboard.admin_config import load_config
+    page = load_config()["default_page"]
     return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                     "terminal.html"))
+                                     PAGE_FILES[page]))
+
+
+@app.get("/admin")
+def admin():
+    """Admin panel: UI routing, AI provider, platform controls."""
+    return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "admin.html"))
 
 
 @app.get("/console")

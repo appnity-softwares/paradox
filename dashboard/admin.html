@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paradox — Admin Panel</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0e14; --surface: #10161f; --surface-2: #151d29;
+    --border: #1f2a38; --text: #e6edf5; --text-dim: #8a97a8;
+    --text-faint: #5c6a7d; --accent: #d4a843;
+    --accent-soft: rgba(212,168,67,.12);
+    --green: #34c07c; --red: #e5544f; --amber: #d99a3d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    background: var(--bg); color: var(--text);
+    margin: 0; font-size: 14px; line-height: 1.5;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; height: 60px;
+    background: rgba(10,14,20,.94); border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand-mark { color: var(--accent); font-size: 20px; }
+  .brand-name { font-weight: 750; font-size: 17px; letter-spacing: .06em; }
+  .brand-sub { color: var(--text-faint); font-size: 12px; }
+  .hdr-link { color: var(--text-dim); font-size: 12.5px; text-decoration: none; margin-left: 14px; }
+  .hdr-link:hover { color: var(--text); }
+  main { max-width: 900px; margin: 0 auto; padding: 26px 24px 70px; }
+  .page-title { font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+  .page-sub { color: var(--text-dim); font-size: 13px; margin: 0 0 20px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h3 { margin: 0 0 14px; font-size: 12.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim); }
+  label { display: block; font-size: 11.5px; color: var(--text-dim); margin-bottom: 4px; }
+  input, select {
+    width: 100%; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 13.5px; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  .btn {
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 16px; font-size: 13.5px; cursor: pointer; font-weight: 550;
+  }
+  .btn:hover { border-color: var(--text-faint); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #14100a; font-weight: 650; }
+  .btn.danger { background: rgba(229,84,79,.12); border-color: rgba(229,84,79,.5); color: var(--red); }
+  .badge {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+    padding: 4px 10px; border-radius: 999px; text-transform: uppercase;
+  }
+  .badge.green { background: rgba(52,192,124,.15); color: var(--green); }
+  .badge.red { background: rgba(229,84,79,.15); color: var(--red); }
+  .badge.amber { background: rgba(217,154,61,.15); color: var(--amber); }
+  .badge.grey { background: rgba(138,151,168,.15); color: var(--text-dim); }
+  .muted { color: var(--text-faint); font-size: 12.5px; }
+  .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 180px; }
+  .status-line { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #182130; }
+  .status-line:last-child { border-bottom: none; }
+  .out {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    color: var(--text-dim); background: var(--surface-2);
+    border-radius: 8px; padding: 10px 12px; margin-top: 12px;
+    white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow-y: auto;
+  }
+  .out:empty { display: none; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); padding: 6px 8px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  td { padding: 7px 8px; border-bottom: 1px solid #182130; }
+  tr:last-child td { border-bottom: none; }
+  .msg { font-size: 12.5px; margin-left: 12px; }
+  .ok { color: var(--green); } .err { color: var(--red); }
+  #login-overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(6,9,13,.82); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #login-overlay[hidden] { display: none; }
+  .login-card { width: 340px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; }
+  .login-title { font-size: 18px; font-weight: 650; margin-bottom: 2px; }
+  .login-sub { color: var(--text-faint); font-size: 12.5px; margin-bottom: 20px; }
+  .login-card label { margin-bottom: 14px; }
+  .form-error { color: var(--red); font-size: 12px; margin-top: 10px; min-height: 15px; }
+  .btn.wide { width: 100%; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="brand-mark">◇</span>
+    <span class="brand-name">PARADOX</span>
+    <span class="brand-sub">Admin Panel</span>
+  </div>
+  <div>
+    <a class="hdr-link" href="/">Terminal</a>
+    <a class="hdr-link" href="/console">Console</a>
+    <a class="hdr-link" href="/legacy">Legacy UI</a>
+  </div>
+</header>
+
+<div id="login-overlay" hidden>
+  <div class="login-card">
+    <div class="login-title">Admin sign in</div>
+    <div class="login-sub">Admin role required</div>
+    <label>User<input id="l-user" value="admin" autocomplete="username"></label>
+    <label>Password<input id="l-pass" type="password" autocomplete="current-password"></label>
+    <label>TOTP <span class="muted">(only if MFA is enabled)</span><input id="l-totp" placeholder="6-digit code" inputmode="numeric"></label>
+    <button class="btn primary wide" onclick="doLogin()">Sign in</button>
+    <div id="l-err" class="form-error"></div>
+  </div>
+</div>
+
+<main>
+  <h1 class="page-title">Platform Administration</h1>
+  <p class="page-sub">Control what your clients see and how the platform behaves. Changes apply immediately.</p>
+
+  <div class="card">
+    <h3>Website — default landing page</h3>
+    <div class="row">
+      <div>
+        <label>What opens at <span class="mono">/</span></label>
+        <select id="cfg-page">
+          <option value="terminal">Trading Terminal (full dashboard)</option>
+          <option value="client">Client Portal (simple, trading-first)</option>
+          <option value="legacy">Classic UI (purana wala original dashboard)</option>
+        </select>
+      </div>
+      <div style="flex:0"><button class="btn primary" onclick="savePage()">Apply</button><span class="msg" id="page-msg"></span></div>
+    </div>
+    <div class="muted" style="margin-top:10px">
+      Direct links always work regardless: <a class="hdr-link" style="display:inline" href="/">/</a> ·
+      <a class="hdr-link" style="display:inline" href="/client">/client</a> ·
+      <a class="hdr-link" style="display:inline" href="/console">/console</a> ·
+      <a class="hdr-link" style="display:inline" href="/legacy">/legacy</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>AI engine</h3>
+    <div id="ai-status"></div>
+    <div class="row" style="margin-top:14px">
+      <div>
+        <label>Gemini API key <span class="muted">(stored server-side, never shown back)</span></label>
+        <input id="ai-key" type="password" placeholder="Paste key, or leave empty">
+      </div>
+      <div style="flex:0">
+        <button class="btn primary" onclick="saveKey()">Save key</button>
+        <button class="btn danger" onclick="clearKey()">Remove</button>
+        <span class="msg" id="ai-msg"></span>
+      </div>
+    </div>
+    <div class="muted" style="margin-top:10px">
+      With a key configured, the strategy builder and copilot use Gemini.
+      Without one they fall back to the built-in rule-based engine — still
+      fully functional, clearly labelled.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Security</h3>
+    <div id="sec-status"></div>
+    <div class="muted" style="margin-top:10px">
+      Admin password is set through the <span class="mono">DSH_ADMIN_PASSWORD</span> environment
+      variable at server start. MFA (TOTP) is enabled by setting <span class="mono">DSH_TOTP_SECRET</span>.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Kill switch</h3>
+    <div id="ks-status"></div>
+    <div class="row" style="margin-top:14px">
+      <div><label>Actor</label><input id="ks-actor" value="admin"></div>
+      <div><label>Reason</label><input id="ks-reason" placeholder="why"></div>
+      <div style="flex:0">
+        <button class="btn danger" onclick="ks('engage')">Engage — block all entries</button>
+        <button class="btn" onclick="ks('release')">Release</button>
+        <span class="msg" id="ks-msg"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Accounts</h3>
+    <div class="scroll"><table id="acct-table"></table></div>
+  </div>
+
+  <div class="card">
+    <h3>Execution log (latest)</h3>
+    <div class="out" id="exec-log"></div>
+  </div>
+</main>
+
+<script>
+let TOKEN = sessionStorage.getItem('dsh_token') || '';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, m =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+async function api(url, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({'Authorization': 'Bearer ' + TOKEN}, opts.headers || {});
+  const r = await fetch(url, opts);
+  if (r.status === 401) showLogin('Admin access required.');
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(d.detail || r.status);
+  }
+  return r.json();
+}
+function showLogin(msg) {
+  $('login-overlay').hidden = false;
+  $('l-err').textContent = msg || '';
+}
+async function doLogin() {
+  const r = await fetch('/api/platform/auth/login', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username: $('l-user').value, password: $('l-pass').value,
+                          totp: $('l-totp').value || null})});
+  if (!r.ok) { showLogin('Login failed.'); return; }
+  const j = await r.json();
+  if (j.role !== 'admin') { showLogin('Admin role required.'); return; }
+  TOKEN = j.token;
+  sessionStorage.setItem('dsh_token', TOKEN);
+  $('login-overlay').hidden = true;
+  loadAll();
+}
+
+async function loadAll() {
+  try {
+    const cfg = await api('/api/platform/admin/config');
+    $('cfg-page').value = cfg.default_page;
+    $('ai-status').innerHTML = statusLine('AI provider',
+      cfg.ai_provider === 'gemini' ? 'Gemini (LLM)' : 'Rule-based fallback',
+      cfg.ai_provider === 'gemini' ? 'green' : 'grey')
+      + statusLine('API key', cfg.ai_key_set ? `configured (${cfg.ai_key_source})` : 'not set',
+        cfg.ai_key_set ? 'green' : 'amber');
+    $('sec-status').innerHTML =
+      statusLine('Auth', cfg.auth_configured ? 'configured' : 'NOT CONFIGURED',
+                 cfg.auth_configured ? 'green' : 'red')
+      + statusLine('MFA (TOTP)', cfg.mfa_enabled ? 'enabled' : 'disabled',
+                   cfg.mfa_enabled ? 'green' : 'grey');
+  } catch (e) {}
+  try {
+    const ks = await api('/api/platform/kill-switch');
+    const active = !!(ks.active || ks.engaged || ks.kill_switch_active);
+    $('ks-status').innerHTML = statusLine('State',
+      active ? 'ENGAGED — new entries blocked' : 'normal — trading allowed',
+      active ? 'red' : 'green');
+  } catch (e) {}
+  try {
+    const ov = await api('/api/platform/overview');
+    const accts = ov.accounts || [];
+    $('acct-table').innerHTML = accts.length
+      ? `<tr><th>Account</th><th>Equity</th><th>Mode</th><th>Status</th></tr>` +
+        accts.map(a => `<tr><td class="mono">${esc(a.account_id)}</td>
+          <td class="mono">$${Number(a.equity ?? a.balance ?? 0).toFixed(2)}</td>
+          <td>${esc(a.mode || '—')}</td>
+          <td><span class="badge ${a.compliant === false ? 'red' : 'green'}">${esc(a.status || 'ok')}</span></td></tr>`).join('')
+      : '<tr><td class="muted" style="padding:12px">No accounts registered.</td></tr>';
+  } catch (e) {
+    $('acct-table').innerHTML = `<tr><td class="muted">Overview unavailable: ${esc(e.message)}</td></tr>`;
+  }
+  try {
+    const log = await api('/api/platform/execution-log?limit=15');
+    const items = Array.isArray(log) ? log : (log.entries || log.items || []);
+    $('exec-log').textContent = items.length
+      ? items.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join('\n')
+      : 'No executions yet.';
+  } catch (e) {}
+}
+function statusLine(k, v, badge) {
+  return `<div class="status-line"><span>${esc(k)}</span><span class="badge ${badge}">${esc(v)}</span></div>`;
+}
+
+async function savePage() {
+  try {
+    await api('/api/platform/admin/config', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({default_page: $('cfg-page').value})});
+    $('page-msg').innerHTML = '<span class="ok">✓ saved — opens at / now</span>';
+  } catch (e) { $('page-msg').innerHTML = `<span class="err">✗ ${esc(e.message)}</span>`; }
+}
+async function saveKey() {
+  try {
+    const r = await api('/api/platform/admin/config', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({gemini_api_key: $('ai-key').value})});
+    $('ai-key').value = '';
+    $('ai-msg').innerHTML = r.ai_key_set
+      ? '<span class="ok">✓ key saved — AI engine active</span>'
+      : '<span class="err">✗ empty key not saved</span>';
+    loadAll();
+  } catch (e) { $('ai-msg').innerHTML = `<span class="err">✗ ${esc(e.message)}</span>`; }
+}
+async function clearKey() {
+  try {
+    await api('/api/platform/admin/config', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({gemini_api_key: ''})});
+    $('ai-msg').innerHTML = '<span class="ok">✓ key removed — rule-based fallback active</span>';
+    loadAll();
+  } catch (e) { $('ai-msg').innerHTML = `<span class="err">✗ ${esc(e.message)}</span>`; }
+}
+async function ks(action) {
+  try {
+    await api('/api/platform/kill-switch', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({scope: 'global', action, actor: $('ks-actor').value || 'admin',
+                            reason: $('ks-reason').value || 'admin panel'})});
+    $('ks-msg').innerHTML = '<span class="ok">✓ done</span>';
+    loadAll();
+  } catch (e) { $('ks-msg').innerHTML = `<span class="err">✗ ${esc(e.message)}</span>`; }
+}
+
+(async () => {
+  if (TOKEN) {
+    try { await loadAll(); return; } catch (e) { /* fall through to login */ }
+  }
+  showLogin('');
+})();
+</script>
+</body>
+</html>
