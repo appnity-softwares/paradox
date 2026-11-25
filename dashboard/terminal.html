@@ -178,6 +178,23 @@
   .tape-h { color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
   @media (max-width: 1100px) { .ws { grid-template-columns: 1fr; } }
   @media (max-width: 720px) { main { padding: 16px 12px 50px; } header { padding: 0 12px; } }
+
+  /* ── single-screen mode (Terminal tab fills exactly 100vh) ── */
+  body.pro-mode { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+  body.pro-mode main { flex: 1; min-height: 0; max-width: none;
+                       padding: 12px 20px 12px; display: flex; flex-direction: column; overflow: hidden; }
+  body.pro-mode #tab-terminal { display: flex; flex-direction: column; flex: 1;
+                                min-height: 0; gap: 10px; }
+  body.pro-mode .top-strip { flex-shrink: 0; padding: 10px 18px; gap: 22px; }
+  body.pro-mode .ws { flex: 1; min-height: 0; }
+  body.pro-mode .ws > div { min-height: 0; }
+  body.pro-mode .ws-side { overflow-y: auto; }
+  body.pro-mode .ws-chart { display: flex; flex-direction: column; }
+  body.pro-mode #chart-wrap { flex: 1; min-height: 0; position: relative; }
+  body.pro-mode #chart-container { height: 100% !important; }
+  body.pro-mode .bottom-panel { flex-shrink: 0; height: 205px;
+                                display: flex; flex-direction: column; }
+  body.pro-mode .bottom-panel .scroll { flex: 1; min-height: 0; max-height: none; }
 </style>
 </head>
 <body>
@@ -226,7 +243,7 @@
 
     <div class="ws">
       <!-- watchlist / symbol info -->
-      <div>
+      <div class="ws-side">
         <div class="ws-title"><span>Watchlist</span><span id="wl-feed" class="muted" style="font-size:9px">—</span></div>
         <div class="wl-row sel">
           <div><div class="wl-sym">XAUUSD</div><div class="wl-sub">Gold spot · demo</div></div>
@@ -247,7 +264,7 @@
       </div>
 
       <!-- chart -->
-      <div>
+      <div class="ws-chart">
         <div class="ws-title">
           <span class="tf-row" id="chart-tfs" style="gap:4px">
             <span class="tf" data-tf="1m">1m</span>
@@ -265,9 +282,9 @@
             <span class="tf" data-ind="sma200">SMA200</span>
           </span>
         </div>
-        <div id="chart-wrap" style="position:relative">
+        <div id="chart-wrap" style="position:relative;flex:1;min-height:0">
           <div id="chart-legend" class="mono" style="position:absolute;top:8px;left:10px;z-index:5;font-size:12px;color:var(--text-dim);pointer-events:none"></div>
-          <div id="chart-container" style="height:calc(100vh - 420px);min-height:380px"></div>
+          <div id="chart-container" style="height:100%;min-height:300px"></div>
         </div>
         <div class="tf-row" style="padding:9px 12px;align-items:center;gap:12px;border-top:1px solid var(--border)">
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="loadMainChart()">↻ Refresh</button>
@@ -276,7 +293,7 @@
       </div>
 
       <!-- order ticket -->
-      <div>
+      <div class="ws-side">
         <div class="ws-title"><span>Order ticket · XAUUSD</span></div>
         <div style="padding:12px 14px 14px">
           <div class="grid-2" style="gap:10px;margin-bottom:10px">
@@ -485,7 +502,14 @@ document.querySelectorAll('#tabs .tab').forEach(t => t.addEventListener('click',
   t.classList.add('active');
   document.querySelectorAll('main > section').forEach(s => s.hidden = true);
   $('tab-' + t.dataset.tab).hidden = false;
+  document.body.classList.toggle('pro-mode', t.dataset.tab === 'terminal');
   loaders[t.dataset.tab]?.();
+  if (t.dataset.tab === 'terminal' && chartReady) {
+    requestAnimationFrame(() => {
+      const el = document.getElementById('chart-container');
+      TV.resize(el.clientWidth, el.clientHeight);
+    });
+  }
 }));
 
 /* ── header quote ──────────────────────────────────────── */
@@ -809,6 +833,12 @@ async function loadMainChart() {
   }
 }
 window.addEventListener('resize', () => { if (chartReady) TV.resize(document.getElementById('chart-container').clientWidth, document.getElementById('chart-container').clientHeight); });
+new ResizeObserver(() => {
+  if (chartReady) {
+    const el = document.getElementById('chart-container');
+    if (el.clientWidth && el.clientHeight) TV.resize(el.clientWidth, el.clientHeight);
+  }
+}).observe(document.getElementById('chart-container'));
 
 /* ── strategy lab ──────────────────────────────────────── */
 const DEF_PARAMS = {
@@ -1050,7 +1080,7 @@ async function loadMt5() {
 
 /* ── boot ──────────────────────────────────────────────── */
 (async () => {
-  const s = await fetch('/api/platform/auth/state').then(r => r.json()).catch(() => ({configured: true}));
+  document.body.classList.add('pro-mode');
   pollQuote();
   loaders.terminal();
 })();
