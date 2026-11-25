@@ -32,6 +32,7 @@ from core.execution.monitoring import FeedMonitor, Reconciler  # noqa: E402
 from core.accounts import (CrossAccountGuard, NetworkIdentityRegistry,
                            DailySnapshotStore, build_evidence_pack,
                            fingerprint_report)
+from core.monitoring import DriftAlertStore, DriftMonitor
 from core.session import SessionProfile, SessionRunStore, SessionScheduler  # noqa: E402
 from core.risk import AccountSnapshot, DeterministicRiskEngine, KillSwitch, \
     RiskConfig  # noqa: E402
@@ -101,6 +102,12 @@ class PlatformState:
         self.router.attach_cross_account_guard(self.cross_guard)
         self.compliance_snapshots = DailySnapshotStore(
             self.state_dir / "compliance_snapshots.jsonl")
+
+        # ── U6: drift monitor -> auto-pause ──────────────────────────────
+        self.drift_alerts = DriftAlertStore(
+            self.state_dir / "drift_alerts.jsonl")
+        self.drift_monitor = DriftMonitor(
+            self.mode_gate, self.audit, self.notifier, self.drift_alerts)
 
     # ── accounts ─────────────────────────────────────────────────────────
     def register_account(self, account_id: str, balance: float,

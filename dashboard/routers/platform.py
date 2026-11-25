@@ -466,6 +466,33 @@ def network_status(user: dict = Depends(require("viewer"))) -> dict:
     return PLATFORM.network_status()
 
 
+@router.get("/drift-alerts")
+def drift_alerts(account: str = "", min_severity: str = "",
+                 user: dict = Depends(require("viewer"))) -> dict:
+    """U6: persisted drift alerts."""
+    return {"alerts": PLATFORM.drift_alerts.entries(
+        account_id=account or None,
+        min_severity=min_severity or None)}
+
+
+class ResumeRequest(BaseModel):
+    mode: str = Field(default="semi_auto")   # target mode after review
+
+
+@router.post("/accounts/{account_id}/resume-deployment")
+def resume_deployment(account_id: str, req: ResumeRequest,
+                      user: dict = Depends(require("trader"))) -> dict:
+    """U6: resuming a paused deployment requires an explicit
+    authenticated human action (trader role + valid session token).
+    AUTO stays protected by the full ModeGate prerequisites."""
+    try:
+        PLATFORM.mode_gate.set_mode(account_id, req.mode)
+    except Exception as exc:
+        raise HTTPException(422, str(exc))
+    return {"account_id": account_id, "mode": req.mode,
+            "resumed_by": user.get("username", user.get("sub", "unknown"))}
+
+
 @router.post("/accounts/{account_id}/session-profile")
 def bind_session_profile(account_id: str, req: SessionBindRequest,
                          user: dict = Depends(require("trader"))) -> dict:
