@@ -1,0 +1,54 @@
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+*.env.local
+*.env.production
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+
+# ── Data (can be large; use git-lfs or external storage) ──────────────────────
+data/*.csv
+data/*.parquet
+data/**/*.csv
+data/**/*.parquet
+data/cache/
+data/vertex/
+data/vertex_quarantine_*/
+data/*.dat
+data/*.hc
+data/*_synthetic.csv
+
+# ── MT5 / broker exports ──────────────────────────────────────────────────────
+*.json.bak
+scripts/*.log
+
+# ── Outputs ───────────────────────────────────────────────────────────────────
+results/
+results.zip
+graphify-out/
+screenshots/
+.mplcache/
+*.log
+
+# ── Runtime state (audit logs, kill switch, sign-off, session runs) ──────────
+state/
+
+# In-memory audit log mis-write protection (U0): ':memory:' must never
+# become a real file again; if it ever does, do not commit it.
+:memory:
+
+# ── macOS / IDE ───────────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp

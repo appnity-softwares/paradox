@@ -1,0 +1,92 @@
+{
+ "config_hash": "868a47cc9bc9770c922993d072f2aab63ee80fd650b288c4f1638f0cf7abeb76",
+ "engine_version": "tick-1.0.0",
+ "ticks_replayed": 4800,
+ "total_trades": 8,
+ "net_profit_usd": 12686.99,
+ "max_drawdown_usd": 1970.07,
+ "win_rate_pct": 87.5,
+ "profit_factor": 28.481,
+ "trades": [
+  {
+   "side": "LONG",
+   "entry_time_utc_ms": 2403000,
+   "exit_time_utc_ms": 3798000,
+   "entry_price": 2012.256,
+   "exit_price": 2015.875,
+   "volume": 5.0,
+   "pnl": 1809.5,
+   "exit_reason": "TP"
+  },
+  {
+   "side": "LONG",
+   "entry_time_utc_ms": 3843000,
+   "exit_time_utc_ms": 5943000,
+   "entry_price": 2016.74,
+   "exit_price": 2015.833,
+   "volume": 5.09,
+   "pnl": -461.66,
+   "exit_reason": "Signal exit"
+  },
+  {
+   "side": "SHORT",
+   "entry_time_utc_ms": 6003000,
+   "exit_time_utc_ms": 10200000,
+   "entry_price": 2015.595,
+   "exit_price": 2011.95,
+   "volume": 5.06,
+   "pnl": 1844.37,
+   "exit_reason": "TP"
+  },
+  {
+   "side": "SHORT",
+   "entry_time_utc_ms": 10263000,
+   "exit_time_utc_ms": 10935000,
+   "entry_price": 2011.345,
+   "exit_price": 2007.654,
+   "volume": 5.15,
+   "pnl": 1900.87,
+   "exit_reason": "TP"
+  },
+  {
+   "side": "SHORT",
+   "entry_time_utc_ms": 10983000,
+   "exit_time_utc_ms": 11874000,
+   "entry_price": 2006.623,
+   "exit_price": 2003.184,
+   "volume": 5.25,
+   "pnl": 1805.48,
+   "exit_reason": "TP"
+  },
+  {
+   "side": "SHORT",
+   "entry_time_utc_ms": 11883000,
+   "exit_time_utc_ms": 12603000,
+   "entry_price": 2002.615,
+   "exit_price": 1998.884,
+   "volume": 5.34,
+   "pnl": 1992.35,
+   "exit_reason": "TP"
+  },
+  {
+   "side": "SHORT",
+   "entry_time_utc_ms": 12663000,
+   "exit_time_utc_ms": 13446000,
+   "entry_price": 1997.596,
+   "exit_price": 1994.057,
+   "volume": 5.44,
+   "pnl": 1925.22,
+   "exit_reason": "TP"
+  },
+  {
+   "side": "SHORT",
+   "entry_time_utc_ms": 13503000,
+   "exit_time_utc_ms": 14397000,
+   "entry_price": 1993.106,
+   "exit_price": 1989.729,
+   "volume": 5.54,
+   "pnl": 1870.86,
+   "exit_reason": "end_of_data"
+  }
+ ]
+}

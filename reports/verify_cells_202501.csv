@@ -1,0 +1,4 @@
+cell,verdict,score,dsr,wf_oos_ret,wf_sharpe,mc_p5,mc_prob_loss,cost2x_ret,holdout_ret,holdout_sharpe,holdout_folds_pos,holdout_verdict
+ema_cross|atr_1.5|rr_1.5|london_ny,PAPER_TRADE_ELIGIBLE,100.0,0.0,61.5,3.01,10.889930000000033,0.023,25.1,1.9,0.14,50.0,MIXED
+ema_cross|atr_1.5|rr_3.0|all,RESEARCH_ONLY,73.8,0.0,16.6,1.21,-32.97362499999997,0.133,26.9,9.2,0.83,50.0,MIXED
+ema_cross|atr_2.5|rr_2.0|all,RESEARCH_ONLY,73.8,0.0,13.7,0.92,-13.880719999999982,0.102,23.7,0.6,-1.36,25.0,FAIL

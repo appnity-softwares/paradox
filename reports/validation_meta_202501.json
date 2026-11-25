@@ -1,0 +1,13 @@
+{
+ "symbol": "XAUUSD",
+ "window": "2025-01 +6mo (15min bars)",
+ "bars": 11652,
+ "dataset_hash": "03e63637f06597a85457d3c9d59cc7f9ba9df4097542f4ab58a1a6e9dd69133e",
+ "strategies": [
+  "ema_cross",
+  "rsi_reversal",
+  "supertrend",
+  "adx_trend",
+  "bollinger"
+ ]
+}

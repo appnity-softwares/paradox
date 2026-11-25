@@ -1,0 +1,5 @@
+length,mult,Strategy,Win Rate %,Max DD %,Total Trades,Sharpe,Profit Factor,RR (realized),Max Trades/Day,Con. Wins,Con. Losses,Net P&L $,Return %,Ending Equity $,Expectancy $,Risk/Trade %,TF,Session,Order
+10,2.0,Supertrend 10x2,32.0,-35.0,559,-0.74,0.94,1.99,4,5,14,-2174.21,-21.7,7825.79,-3.89,1.0,15m,all,Market
+10,3.0,Supertrend 10x3,30.5,-53.8,547,-1.96,0.86,1.96,4,5,13,-4335.63,-43.4,5664.37,-7.93,1.0,15m,all,Market
+14,2.0,Supertrend 14x2,32.7,-37.2,553,-0.35,0.96,1.97,4,5,14,-1436.84,-14.4,8563.16,-2.6,1.0,15m,all,Market
+14,3.0,Supertrend 14x3,31.3,-48.9,552,-1.36,0.9,1.98,4,5,13,-3343.03,-33.4,6656.97,-6.06,1.0,15m,all,Market

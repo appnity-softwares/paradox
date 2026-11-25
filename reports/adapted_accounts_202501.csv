@@ -1,0 +1,3 @@
+account,balance,suitable,lot,risk_money,margin_required,max_open_positions,max_total_exposure_lots,max_trades_per_day,ret_pct,sharpe,max_dd_pct,trades,suggestions
+10k,10000.0,True,0.08,96.0,265.01,3,1.51,3,61.2,3.04,-11.7,379,[]
+100k,100000.0,True,0.83,996.0,2749.44,3,5.0,3,61.2,3.04,-11.7,379,[]

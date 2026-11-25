@@ -1,0 +1,23 @@
+,value
+Strategy,EMA 20/50
+Win Rate %,27.8
+Max DD %,-69.1
+Total Trades,544
+Sharpe,-4.25
+Profit Factor,0.75
+RR (realized),1.96
+Max Trades/Day,4
+Con. Wins,5
+Con. Losses,18
+Net P&L $,-6721.65
+Return %,-67.2
+Ending Equity $,3278.35
+Expectancy $,-12.36
+Risk/Trade %,1.0
+TF,15m
+Session,all
+Order,Market
+Strategy Key,ema_cross
+Params,defaults
+Bars,11652
+Dataset Hash Prefix,03e63637f06597a8

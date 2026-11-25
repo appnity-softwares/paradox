@@ -1,0 +1,141 @@
+{
+ "note": "generated from the real ingested XAUUSD tick store; market closures (weekends, Good Friday) are reported separately from data gaps and do not quarantine",
+ "golden_week": {
+  "start_ms": 1735776000000,
+  "end_ms": 1736294400000,
+  "ticks": 977612,
+  "status": "ok",
+  "reasons": [],
+  "checks": {
+   "duplicates": {
+    "count": 0,
+    "pct": 0.0,
+    "limit_pct": 0.5
+   },
+   "out_of_order": {
+    "count": 0,
+    "pct": 0.0,
+    "limit_pct": 0.1
+   },
+   "crossed_quotes": {
+    "count": 0,
+    "pct": 0.0,
+    "limit_pct": 0.05
+   },
+   "nonpositive_spread": {
+    "count": 0,
+    "pct": 0.0,
+    "limit_pct": 5.0
+   },
+   "zero_or_negative_price": {
+    "count": 0,
+    "pct": 0.0,
+    "limit_pct": 0.0
+   },
+   "price_spikes": {
+    "count": 51,
+    "pct": 0.0052,
+    "limit_pct": 0.5
+   },
+   "gaps_over_limit": {
+    "count": 0,
+    "max_gap_hours": 49.0,
+    "limit_hours": 72.0,
+    "market_closures": [],
+    "data_gaps": []
+   },
+   "density": {
+    "ticks_per_hour": 6789.0,
+    "span_hours": 144.0
+   },
+   "spread": {
+    "median": 0.49,
+    "p95": 0.62,
+    "max": 3.108
+   }
+  },
+  "thresholds": {
+   "max_duplicate_pct": 0.5,
+   "max_out_of_order_pct": 0.1,
+   "max_crossed_pct": 0.05,
+   "max_nonpositive_spread_pct": 5.0,
+   "max_spike_pct": 0.5,
+   "max_gap_hours": 72.0,
+   "min_ticks": 1000,
+   "spike_jump_multiple": 40.0
+  }
+ },
+ "year_2025_h1": {
+  "start_ms": 1735689600000,
+  "end_ms": 1751328000000,
+  "ticks": 33248543,
+  "status": "ok",
+  "reasons": [],
+  "checks": {
+   "duplicates": {
+    "count": 0,
+    "pct": 0.0,
+    "limit_pct": 0.5
+   },
+   "out_of_order": {
+    "count": 0,
+    "pct": 0.0,
+    "limit_pct": 0.1
+   },
+   "crossed_quotes": {
+    "count": 0,
+    "pct": 0.0,
+    "limit_pct": 0.05
+   },
+   "nonpositive_spread": {
+    "count": 0,
+    "pct": 0.0,
+    "limit_pct": 5.0
+   },
+   "zero_or_negative_price": {
+    "count": 0,
+    "pct": 0.0,
+    "limit_pct": 0.0
+   },
+   "price_spikes": {
+    "count": 4209,
+    "pct": 0.0127,
+    "limit_pct": 0.5
+   },
+   "gaps_over_limit": {
+    "count": 0,
+    "max_gap_hours": 73.02,
+    "limit_hours": 72.0,
+    "market_closures": [
+     {
+      "from_ms": 1744923539850,
+      "to_ms": 1745186402442,
+      "hours": 73.02,
+      "open_hours_inside": 0.03
+     }
+    ],
+    "data_gaps": []
+   },
+   "density": {
+    "ticks_per_hour": 7694.6,
+    "span_hours": 4321.0
+   },
+   "spread": {
+    "median": 0.58,
+    "p95": 0.87,
+    "max": 14.575
+   }
+  },
+  "thresholds": {
+   "max_duplicate_pct": 0.5,
+   "max_out_of_order_pct": 0.1,
+   "max_crossed_pct": 0.05,
+   "max_nonpositive_spread_pct": 5.0,
+   "max_spike_pct": 0.5,
+   "max_gap_hours": 72.0,
+   "min_ticks": 1000,
+   "spike_jump_multiple": 40.0
+  }
+ },
+ "dataset_hash": "03e63637f06597a85457d3c9d59cc7f9ba9df4097542f4ab58a1a6e9dd69133e"
+}

@@ -1,0 +1,11 @@
+{
+  "source": "mt5_mac_history_cache",
+  "symbol": "XAUUSD",
+  "total_real_ticks": 205771503,
+  "span_years": 2.88,
+  "data_as_of": "2026-11-18T23:59:58.999000+00:00",
+  "first_tick": "2024-01-01T23:00:00.312000+00:00",
+  "last_tick": "2026-11-18T23:59:58.999000+00:00",
+  "vertex_embeddings": 8080,
+  "meets_two_year_minimum": true
+}

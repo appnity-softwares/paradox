@@ -1,0 +1,38 @@
+{
+ "source_label": "REPLAY_SOAK_SWEEP",
+ "source_detail": "real historical ticks replayed through the live pipeline \u2014 not live trading, not a forecast",
+ "months": [
+  {
+   "month": "2024-01",
+   "ticks": 3059497,
+   "end_equity": 97388.55,
+   "orders": 483,
+   "filled": 147,
+   "rejected": 336,
+   "rejection_reasons": {
+    "prohibited_style_averaging_down": 329,
+    "spread_too_wide": 7,
+    "prohibited_style_grid": 20
+   },
+   "integrity_problems": []
+  },
+  {
+   "month": "2024-02",
+   "ticks": 2249805,
+   "end_equity": 97748.91,
+   "orders": 443,
+   "filled": 148,
+   "rejected": 295,
+   "rejection_reasons": {
+    "prohibited_style_averaging_down": 293,
+    "prohibited_style_grid": 56,
+    "spread_too_wide": 2
+   },
+   "integrity_problems": []
+  }
+ ],
+ "n_months": 2,
+ "n_clean": 2,
+ "n_problem": 0,
+ "elapsed_s": 4.3
+}

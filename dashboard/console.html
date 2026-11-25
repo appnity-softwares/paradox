@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI Quant Terminal — Platform Console</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: ui-monospace, Menlo, monospace; background: #0d1117; color: #c9d1d9; margin: 0; padding: 16px; }
+  h1 { font-size: 18px; } h2 { font-size: 14px; color: #58a6ff; margin: 18px 0 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px; }
+  .label { font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+  .LIVE { background: #1a7f37; } .DELAYED { background: #9e6a03; }
+  .STALE { background: #b35900; } .SYNTHETIC { background: #8b949e; color: #0d1117; }
+  .ok { color: #3fb950; } .warn { color: #d29922; } .bad { color: #f85149; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { border-bottom: 1px solid #21262d; padding: 4px 6px; text-align: left; }
+  button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  button.danger { background: #67060c; border-color: #f85149; color: #fff; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  input, select { background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 5px; }
+  #feed { max-height: 180px; overflow-y: auto; font-size: 11px; }
+</style>
+</head>
+<body>
+<h1>Platform Console <span style="color:#8b949e;font-size:12px">— live controls locked until Phase 4 sign-off</span></h1>
+
+<h2>Overview</h2>
+<div class="grid" id="accounts"></div>
+
+<h2>Data sources (honest labels)</h2>
+<div class="card"><table id="sources"></table></div>
+
+<h2>Kill switch — always visible</h2>
+<div class="card" id="killswitch"></div>
+
+<h2>Sessions (U2)</h2>
+<div class="card" id="sessions">loading…</div>
+
+<h2>Compliance</h2>
+<div class="grid" id="compliance"></div>
+
+<h2>Accounts (admin)</h2>
+<div class="card">
+  <table><tr><td>id</td><td><input id="a-id" value="paper-10k" size="10"></td>
+      <td>balance</td><td><input id="a-balance" value="10000" size="8"></td></tr></table>
+  <button onclick="registerAccount()">Register account</button>
+  <pre id="a-out" style="font-size:11px;color:#8b949e"></pre>
+</div>
+
+<h2>Order ticket (paper gateway)</h2>
+<div class="card">
+  <table>
+    <tr><td>account</td><td><input id="t-account" value="paper-10k" size="10"></td>
+        <td>side</td><td><select id="t-side"><option>long</option><option>short</option></select></td></tr>
+    <tr><td>risk %</td><td><input id="t-risk" value="0.5" size="6"></td>
+        <td>SL</td><td><input id="t-sl" value="2588" size="8"></td></tr>
+    <tr><td>TP</td><td><input id="t-tp" value="2624" size="8"></td>
+        <td>key</td><td><input id="t-key" value="ticket-1" size="12"></td></tr>
+  </table>
+  <button onclick="submitTicket()">Submit (paper)</button>
+  <button class="danger" disabled title="Enabled only after Phase 4 sign-off">Submit LIVE</button>
+  <pre id="ticket-result" style="font-size:11px;color:#8b949e"></pre>
+</div>
+
+<h2>AI assistant (read/propose only)</h2>
+<div class="card">
+  <input id="ai-msg" value="Summarize my positions" size="40">
+  <button onclick="askAssistant()">Ask</button>
+  <pre id="ai-out" style="font-size:11px;color:#8b949e"></pre>
+</div>
+
+<h2>Charts — real bars (DELAYED), backtest equity/drawdown, trade markers</h2>
+<div class="card">
+  <button onclick="loadChart()">Load 2025-01-02→08 · 15m · EMA cross backtest</button>
+  <span style="font-size:11px;color:#8b949e" id="chart-label"></span>
+  <svg id="candles" width="100%" height="220" viewBox="0 0 1000 220"></svg>
+  <svg id="equity" width="100%" height="140" viewBox="0 0 1000 140"></svg>
+  <div style="font-size:11px;color:#8b949e" id="chart-summary"></div>
+</div>
+
+<h2>Trade replay — step through the backtest bar by bar</h2>
+<div class="card">
+  <button onclick="loadReplay()">Load replay (2025-01-02→08 · 15m)</button>
+  <input type="range" id="rp-slider" min="0" max="0" value="0" style="width:70%"
+         oninput="showBar(parseInt(this.value))">
+  <span id="rp-pos" style="font-size:11px"></span>
+  <svg id="rp-svg" width="100%" height="220" viewBox="0 0 1000 220"></svg>
+  <div id="rp-status" style="font-size:12px"></div>
+</div>
+
+<h2>Admin — audit log</h2>
+<div class="card"><div id="feed"></div></div>
+
+<div class="card" id="login-box" style="display:none">
+  <b>Sign in</b> <span style="font-size:11px;color:#8b949e">— session auth, MFA if enrolled</span>
+  <table><tr><td>user</td><td><input id="l-user" value="admin" size="10"></td>
+  <td>password</td><td><input id="l-pass" type="password" size="14"></td>
+  <td>TOTP</td><td><input id="l-totp" size="7" placeholder="if MFA"></td></tr></table>
+  <button onclick="doLogin()">Sign in</button>
+  <span id="l-err" style="color:#f85149;font-size:11px"></span>
+</div>
+
+<script>
+let TOKEN = sessionStorage.getItem('dsh_token') || '';
+
+async function j(url, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({'Authorization': 'Bearer ' + TOKEN},
+    opts.headers || {});
+  const r = await fetch(url, opts);
+  if (r.status === 401) { showLogin('session expired or missing'); }
+  return {ok: r.ok, status: r.status, body: await r.json().catch(() => ({}))};
+}
+
+async function showLogin(msg) {
+  document.getElementById('login-box').style.display = 'block';
+  document.getElementById('l-err').textContent = msg || '';
+}
+
+async function doLogin() {
+  const r = await fetch('/api/platform/auth/login', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username: v('l-user'), password: v('l-pass'),
+                          totp: v('l-totp') || null})});
+  if (!r.ok) { showLogin('login failed: ' + (await r.json()).detail); return; }
+  TOKEN = (await r.json()).token;
+  sessionStorage.setItem('dsh_token', TOKEN);
+  document.getElementById('login-box').style.display = 'none';
+  refresh();
+}
+
+(async () => {
+  const s = await fetch('/api/platform/auth/state').then(r => r.json());
+  if (!s.configured) showLogin('AUTH NOT CONFIGURED — set DSH_ADMIN_PASSWORD; mutating endpoints fail closed');
+  else if (!TOKEN) showLogin('');
+})();
+
+
+async function refresh() {
+  const ov = await j('/api/platform/overview');
+  if (ov.ok) {
+    document.getElementById('accounts').innerHTML = ov.body.accounts.map(a =>
+      `<div class="card"><b>${a.account_id}</b> <span class="label ${a.mode==='paper'?'DELAYED':'LIVE'}">${a.mode}</span><br>
+       equity $${a.equity?.toFixed(2)} · positions ${a.open_positions}<br>
+       risk: <span class="${a.risk_status==='ok'?'ok':'bad'}">${a.risk_status}</span> ·
+       compliance: <span class="${a.compliance_status==='ok'?'ok':(a.compliance_status==='breached'?'bad':'warn')}">${a.compliance_status}</span></div>`).join('')
+      || '<div class="card">no accounts registered</div>';
+    document.getElementById('sources').innerHTML = ov.body.data_sources.map(s =>
+      `<tr><td><span class="label ${s.label}">${s.label}</span></td><td>${s.source}</td><td>${s.detail}</td></tr>`).join('');
+    const ks = ov.body.kill_switch;
+    document.getElementById('killswitch').innerHTML =
+      `global: <span class="${ks.global?'bad':'ok'}">${ks.global?'ENGAGED':'clear'}</span>
+       <button class="danger" onclick="kill('global','engage')">ENGAGE</button>
+       <button onclick="kill('global','disengage')">Disengage (human)</button>
+       <br><span style="font-size:11px;color:#8b949e">sign-off: ${JSON.stringify(ov.body.live_signoff) ?? 'none — live controls disabled'}</span>`;
+  }
+  const rs = await j('/api/platform/compliance/rulesets');
+  if (rs.ok) document.getElementById('compliance').innerHTML = rs.body.map(r =>
+    `<div class="card"><b>${r.firm} ${r.program} ${r.version}</b>
+     <span class="label ${r.status==='verified'?'LIVE':'STALE'}">${r.status}</span><br>
+     grants permission: <span class="${r.grants_permission?'bad':'ok'}">${r.grants_permission}</span>
+     <table>${r.rules_with_clauses.map(x =>
+       `<tr><td>${x.rule}</td><td>${x.definition}</td><td>§ ${x.citations.join(', ')||'—'}</td></tr>`).join('')}</table></div>`).join('')
+    || '<div class="card">no rule sets stored</div>';
+  const sess = await j('/api/platform/accounts/' +
+    (document.getElementById('t-account').value || 'paper-10k') + '/session-status');
+  if (sess.ok) {
+    const s = sess.body;
+    const w = s.window;
+    document.getElementById('sessions').innerHTML =
+      `<b>${s.account_id}</b> profile: ${s.profile ?? '—'} ·
+       status: <span class="label ${s.status === 'active' ? 'LIVE' : (s.status === 'unbound' ? 'STALE' : 'DELAYED')}">${s.status}</span><br>` +
+      (w ? `window ${new Date(w.start_ms).toISOString()} → ${new Date(w.end_ms).toISOString()} ·
+       cutoff ${new Date(w.cutoff_ms).toISOString()} · flatten ${new Date(w.flatten_ms).toISOString()} ·
+       entries ${w.entries}/${w.max_trades ?? '∞'}<br>` : '') +
+      (s.last_run ? `last run: ${s.last_run.date} ${s.last_run.status} ${s.last_run.reason || ''}` : 'no runs recorded');
+  }
+  const runs = await j('/api/platform/deployments/default/sessions');
+  if (runs.ok && runs.body.length) {
+    document.getElementById('sessions').innerHTML += '<table>' + runs.body.slice(-5).map(r =>
+      `<tr><td>${r.date}</td><td>${r.account_id}</td><td>${r.status}</td><td>${r.reason || ''}</td><td>pnl ${r.pnl}</td></tr>`).join('') + '</table>';
+  }
+  const log = await j('/api/platform/execution-log?limit=12');
+  if (log.ok) document.getElementById('feed').innerHTML = log.body.map(e =>
+    `<div>${e.ts_ms ? new Date(e.ts_ms).toISOString() : ''} — ${e.event} ${JSON.stringify(e).slice(0,140)}</div>`).join('');
+}
+
+async function kill(scope, action) {
+  const actor = prompt('your name (audit):'); if (!actor) return;
+  const reason = prompt('reason (audit):'); if (!reason) return;
+  await j('/api/platform/kill-switch', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({scope, action, actor, reason})});
+  refresh();
+}
+
+async function registerAccount() {
+  const r = await j('/api/platform/accounts', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({account_id: v('a-id'),
+                          balance: parseFloat(v('a-balance'))})});
+  document.getElementById('a-out').textContent =
+    JSON.stringify(r.body, null, 1);
+  refresh();
+}
+
+async function submitTicket() {
+  const body = {account_id: v('t-account'), symbol: 'XAUUSD', side: v('t-side'),
+    intended_risk_pct: parseFloat(v('t-risk')), sl_price: parseFloat(v('t-sl')),
+    tp_price: parseFloat(v('t-tp')) || null, idempotency_key: v('t-key')};
+  const r = await j('/api/platform/orders', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  document.getElementById('ticket-result').textContent = JSON.stringify(r.body, null, 1);
+  refresh();
+}
+
+async function askAssistant() {
+  const r = await j('/api/platform/assistant', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({message: document.getElementById('ai-msg').value})});
+  document.getElementById('ai-out').textContent = JSON.stringify(r.body, null, 1);
+}
+
+async function loadChart() {
+  const S = 1735776000000, E = 1736294400000;
+  const b = await j(`/api/platform/charts/bars?tf=15m&start_ms=${S}&end_ms=${E}`);
+  const bt = await j(`/api/platform/charts/backtest?tf=15m&start_ms=${S}&end_ms=${E}`);
+  if (!b.ok || !bt.ok) { document.getElementById('chart-label').textContent = 'chart data unavailable'; return; }
+  document.getElementById('chart-label').textContent =
+    b.body.source_label + ' — ' + b.body.source_detail;
+  drawCandles(b.body.bars, bt.body.trades);
+  drawLine(document.getElementById('equity'), bt.body.equity, '#3fb950',
+           bt.body.drawdown_pct, '#f85149');
+  const s = bt.body.summary;
+  document.getElementById('chart-summary').textContent =
+    `${s.n_trades} trades · final equity $${s.final_equity.toFixed(2)} · max DD ${s.max_drawdown_pct.toFixed(2)}%`;
+}
+
+function drawCandles(bars, trades) {
+  const svg = document.getElementById('candles');
+  const n = bars.length, W = 1000, H = 220, pad = 10;
+  const lo = Math.min(...bars.map(b => b.l)), hi = Math.max(...bars.map(b => b.h));
+  const y = p => pad + (hi - p) / (hi - lo || 1) * (H - 2 * pad);
+  const bw = Math.max(1, W / n - 1);
+  const tIdx = Object.fromEntries(bars.map((b, i) => [b.t, i]));
+  let s = '';
+  bars.forEach((b, i) => {
+    const x = i * (W / n) + 1, up = b.c >= b.o, col = up ? '#3fb950' : '#f85149';
+    s += `<line x1="${x + bw / 2}" y1="${y(b.h)}" x2="${x + bw / 2}" y2="${y(b.l)}" stroke="${col}" stroke-width="1"/>` +
+         `<rect x="${x}" y="${Math.min(y(b.o), y(b.c))}" width="${bw}" height="${Math.max(1, Math.abs(y(b.c) - y(b.o)))}" fill="${col}"/>`;
+  });
+  (trades || []).forEach(t => {
+    const i = tIdx[t.entry_time];
+    if (i === undefined) return;
+    const x = i * (W / n) + bw / 2, col = t.side === 'LONG' ? '#58a6ff' : '#d29922';
+    s += `<path d="M ${x} ${t.side === 'LONG' ? H - 2 : 2} l -4 6 l 8 0 z" fill="${col}"/><text x="${x - 3}" y="${t.side === 'LONG' ? H - 12 : 14}" fill="${col}" font-size="8">${t.reason[0]}</text>`;
+  });
+  svg.innerHTML = s;
+}
+
+function drawLine(svg, series, color, dd, ddColor) {
+  const W = 1000, H = 140, pad = 8;
+  const vals = series.map(p => p.v);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const x = i => pad + i / (series.length - 1 || 1) * (W - 2 * pad);
+  const y = v => pad + (hi - v) / (hi - lo || 1) * (H - 2 * pad);
+  let s = `<polyline fill="none" stroke="${color}" stroke-width="1.5" points="${series.map((p, i) => x(i) + ',' + y(p.v)).join(' ')}"/>`;
+  if (dd) {
+    const dlo = 0, dhi = Math.max(...dd.map(p => p.v), 1);
+    const dy = v => pad + v / dhi * (H - 2 * pad);
+    s += `<polyline fill="none" stroke="${ddColor}" stroke-width="1" stroke-dasharray="3,2" points="${dd.map((p, i) => x(i) + ',' + dy(p.v)).join(' ')}"/>`;
+  }
+  svg.innerHTML = s;
+}
+
+let RP = null;   // replay payload
+
+async function loadReplay() {
+  const S = 1735776000000, E = 1736294400000;
+  const r = await j(`/api/platform/charts/replay?tf=15m&start_ms=${S}&end_ms=${E}`);
+  if (!r.ok) { document.getElementById('rp-status').textContent = 'replay unavailable'; return; }
+  RP = r.body;
+  document.getElementById('rp-slider').max = RP.times.length - 1;
+  document.getElementById('rp-slider').value = 0;
+  showBar(0);
+}
+
+function showBar(i) {
+  if (!RP) return;
+  document.getElementById('rp-pos').textContent =
+    `bar ${i + 1}/${RP.times.length} · ${RP.times[i]}`;
+  const svg = document.getElementById('rp-svg');
+  const [o, h, l, c] = RP.ohlc[i];
+  // window of the last 120 bars up to i
+  const from = Math.max(0, i - 119), win = RP.ohlc.slice(from, i + 1);
+  const lo = Math.min(...win.map(x => x[2])), hi = Math.max(...win.map(x => x[1]));
+  const y = p => 10 + (hi - p) / (hi - lo || 1) * 200;
+  const bw = Math.max(1, 1000 / win.length - 1);
+  let s = '';
+  win.forEach((b, k) => {
+    const x = k * (1000 / win.length) + 1, up = b[3] >= b[0];
+    const col = up ? '#3fb950' : '#f85149';
+    s += `<line x1="${x + bw / 2}" y1="${y(b[1])}" x2="${x + bw / 2}" y2="${y(b[2])}" stroke="${col}"/>` +
+         `<rect x="${x}" y="${Math.min(y(b[0]), y(b[3]))}" width="${bw}" height="${Math.max(1, Math.abs(y(b[3]) - y(b[0])))}" fill="${col}"/>`;
+  });
+  // open-trade markers at the current bar
+  (RP.open_trades[i] || []).forEach(tid => { s += `<text x="${940}" y="${18 + tid * 12}" fill="#58a6ff" font-size="10">open #${tid}</text>`; });
+  svg.innerHTML = s;
+  const closed = RP.closed_on_bar[i] || [];
+  const dd = RP.drawdown_pct[i];
+  document.getElementById('rp-status').innerHTML =
+    `equity <b>$${RP.equity[i].toFixed(2)}</b> · drawdown ` +
+    `<span class="${dd > 5 ? 'bad' : dd > 2 ? 'warn' : 'ok'}">${dd.toFixed(2)}%</span>` +
+    (closed.length ? ` · closed: ${closed.map(t => `#${t.id} ${t.side} ${t.reason} ${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(2)}`).join(', ')}` : '');
+}
+
+const v = id => document.getElementById(id).value;
+refresh(); setInterval(refresh, 15000);
+</script>
+</body>
+</html>

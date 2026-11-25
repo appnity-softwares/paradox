@@ -1,0 +1,14 @@
+{
+  "provider": "MetaTrader 5 (Mac Spot)",
+  "provider_key": "mt5_mac",
+  "symbol": "XAUUSD",
+  "timeframe": "1m",
+  "real_data": true,
+  "spot": true,
+  "delayed": false,
+  "synthetic": false,
+  "stale": false,
+  "sanitized_bars": 0,
+  "fetched_at": "2026-11-23T08:54:22.787440+00:00",
+  "data_as_of": "2026-11-23T06:26:00+00:00"
+}
