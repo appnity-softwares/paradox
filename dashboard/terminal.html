@@ -182,8 +182,21 @@
           <div class="tf" data-tf="1d">1D</div>
         </div>
         <div class="mono muted" id="ohlc-readout" style="margin-bottom:10px">—</div>
-        <svg id="main-chart" width="100%" height="420" viewBox="0 0 1100 420" preserveAspectRatio="none"></svg>
-        <div class="muted" id="chart-note" style="margin-top:10px"></div>
+        <div class="tf-row" style="margin-bottom:10px" id="ind-toggles">
+          <div class="tf active" data-ind="ema20">EMA 20</div>
+          <div class="tf active" data-ind="ema50">EMA 50</div>
+          <div class="tf" data-ind="bb">Bollinger</div>
+          <div class="tf active" data-ind="vol">Volume</div>
+          <div class="tf" data-ind="sma200">SMA 200</div>
+        </div>
+        <div id="chart-wrap" style="position:relative">
+          <div id="chart-legend" class="mono" style="position:absolute;top:8px;left:10px;z-index:5;font-size:12px;color:var(--text-dim);pointer-events:none"></div>
+          <div id="chart-container" style="height:440px"></div>
+        </div>
+        <div class="tf-row" style="margin-top:10px;align-items:center">
+          <button class="btn" style="padding:5px 12px;font-size:12px" onclick="loadMainChart()">↻ Refresh</button>
+          <span class="muted" id="chart-note"></span>
+        </div>
       </div>
 
       <div>
@@ -368,6 +381,7 @@
   </div>
 </div>
 
+<script src="/vendor/lightweight-charts.js"></script>
 <script>
 /* ── core ──────────────────────────────────────────────── */
 let TOKEN = sessionStorage.getItem('dsh_token') || '';
@@ -497,51 +511,128 @@ async function closeAll() {
   } catch (e) { alert('Close-all failed: ' + e.message); }
 }
 
-/* ── charts ────────────────────────────────────────────── */
+/* ── charts (TradingView Lightweight Charts) ──────────── */
 let chartTf = '15m';
+const IND = {ema20: true, ema50: true, bb: false, vol: true, sma200: false};
+let TV = null, candleSeries = null, volSeries = null, indSeries = {};
+let chartReady = false, chartData = [];
+
 document.querySelectorAll('#chart-tfs .tf').forEach(el => el.addEventListener('click', () => {
   document.querySelectorAll('#chart-tfs .tf').forEach(x => x.classList.remove('active'));
   el.classList.add('active');
   chartTf = el.dataset.tf;
   loadMainChart();
 }));
+document.querySelectorAll('#ind-toggles .tf').forEach(el => el.addEventListener('click', () => {
+  el.classList.toggle('active');
+  IND[el.dataset.ind] = el.classList.contains('active');
+  applyIndicators();
+}));
+
+function initChart() {
+  if (chartReady || typeof LightweightCharts === 'undefined') return;
+  const el = document.getElementById('chart-container');
+  TV = LightweightCharts.createChart(el, {
+    height: 440, width: el.clientWidth,
+    layout: {background: {type: 'solid', color: '#0a0e14'}, textColor: '#8a97a8',
+             fontFamily: "ui-monospace, Menlo, monospace"},
+    grid: {vertLines: {color: '#151d29'}, horzLines: {color: '#151d29'}},
+    rightPriceScale: {borderColor: '#1f2a38'},
+    timeScale: {borderColor: '#1f2a38', timeVisible: true, secondsVisible: false},
+    crosshair: {mode: LightweightCharts.CrosshairMode.Normal},
+  });
+  candleSeries = TV.addCandlestickSeries({
+    upColor: '#34c07c', downColor: '#e5544f', borderVisible: false,
+    wickUpColor: '#34c07c', wickDownColor: '#e5544f',
+  });
+  volSeries = TV.addHistogramSeries({priceFormat: {type: 'volume'},
+    priceScaleId: 'vol', lastValueVisible: false, priceLineVisible: false});
+  TV.priceScale('vol').applyOptions({scaleMargins: {top: 0.82, bottom: 0}});
+  for (const [key, color, width] of [
+      ['ema20', '#d4a843', 1.4], ['ema50', '#4f8cff', 1.4],
+      ['sma200', '#9b6dd6', 1.2],
+      ['bbU', '#5c6a7d', 1], ['bbL', '#5c6a7d', 1]]) {
+    indSeries[key] = TV.addLineSeries({color, lineWidth: width, lastValueVisible: false,
+      priceLineVisible: false, crosshairMarkerVisible: false});
+  }
+  TV.subscribeCrosshairMove(param => {
+    const leg = document.getElementById('chart-legend');
+    if (!param || !param.time || !param.seriesData) { leg.innerHTML = ''; return; }
+    const b = param.seriesData.get(candleSeries);
+    if (!b) { leg.innerHTML = ''; return; }
+    leg.innerHTML = `O <b>${b.open.toFixed(2)}</b>&nbsp; H <b style="color:#34c07c">${b.high.toFixed(2)}</b>&nbsp; L <b style="color:#e5544f">${b.low.toFixed(2)}</b>&nbsp; C <b>${b.close.toFixed(2)}</b>` +
+      (b.volume !== undefined ? `&nbsp; V ${b.volume}` : '');
+  });
+  chartReady = true;
+}
+
+function ema(vals, n) {
+  const k = 2 / (n + 1), out = [];
+  let prev = null;
+  vals.forEach((v, i) => {
+    prev = i === 0 ? v : v * k + prev * (1 - k);
+    out.push(i < n - 1 ? null : prev);
+  });
+  return out;
+}
+function sma(vals, n) {
+  const out = []; let sum = 0;
+  vals.forEach((v, i) => {
+    sum += v; if (i >= n) sum -= vals[i - n];
+    out.push(i >= n - 1 ? sum / n : null);
+  });
+  return out;
+}
+function applyIndicators() {
+  if (!chartReady) return;
+  const closes = chartData.map(b => b.close);
+  const stamp = (arr) => chartData.map((b, i) => arr[i] == null ? null : {time: b.time, value: arr[i]})
+    .filter(Boolean);
+  indSeries.ema20.setData(IND.ema20 ? stamp(ema(closes, 20)) : []);
+  indSeries.ema50.setData(IND.ema50 ? stamp(ema(closes, 50)) : []);
+  indSeries.sma200.setData(IND.sma200 ? stamp(sma(closes, 200)) : []);
+  if (IND.bb) {
+    const mid = sma(closes, 20);
+    const dev = closes.map((_, i) => {
+      if (i < 19) return null;
+      const m = mid[i];
+      const slice = closes.slice(i - 19, i + 1);
+      return Math.sqrt(slice.reduce((s, v) => s + (v - m) ** 2, 0) / 20);
+    });
+    indSeries.bbU.setData(stamp(mid.map((m, i) => m == null ? null : m + 2 * dev[i])));
+    indSeries.bbL.setData(stamp(mid.map((m, i) => m == null ? null : m - 2 * dev[i])));
+  } else {
+    indSeries.bbU.setData([]); indSeries.bbL.setData([]);
+  }
+  volSeries.applyOptions({visible: IND.vol});
+}
+
 async function loadMainChart() {
+  initChart();
   try {
     const r = await api('/api/data?tf=' + chartTf + '&bars=5000');
-    const bars = (r.data || []).map(b => ({t: b.time, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume}));
-    drawCandles($('main-chart'), bars, 400);
-    const last = bars[bars.length - 1];
-    if (last) $('ohlc-readout').textContent =
-      `O ${last.o.toFixed(2)}  H ${last.h.toFixed(2)}  L ${last.l.toFixed(2)}  C ${last.c.toFixed(2)}  ·  ${bars.length} bars · ${chartTf}`;
-    $('chart-note').textContent = 'Real recorded bars from the tick store — delayed by definition, never presented as live.';
-  } catch (e) { $('ohlc-readout').textContent = 'Chart data unavailable: ' + e.message; }
-}
-function drawCandles(svg, bars, H) {
-  const W = 1100, padL = 8, padR = 64, padT = 14, padB = 22;
-  if (!bars.length) { svg.innerHTML = ''; return; }
-  const lo = Math.min(...bars.map(b => b.l)), hi = Math.max(...bars.map(b => b.h));
-  const pad = (hi - lo) * 0.06 || 1;
-  const ylo = lo - pad, yhi = hi + pad;
-  const y = p => padT + (yhi - p) / (yhi - ylo) * (H - padT - padB);
-  const iw = W - padL - padR, bw = Math.max(1.2, iw / bars.length - 1);
-  let s = '';
-  for (let g = 0; g <= 5; g++) {
-    const pv = ylo + (yhi - ylo) * g / 5, py = y(pv);
-    s += `<line x1="${padL}" y1="${py}" x2="${W - padR}" y2="${py}" stroke="#182130"/>` +
-         `<text x="${W - padR + 8}" y="${py + 4}" fill="#5c6a7d" font-size="11" font-family="monospace">${pv.toFixed(1)}</text>`;
+    chartData = (r.data || []).map(b => ({time: b.time, open: b.open, high: b.high,
+      low: b.low, close: b.close, volume: b.volume}));
+    if (chartReady) {
+      candleSeries.setData(chartData);
+      volSeries.setData(chartData.map(b => ({time: b.time, value: b.volume,
+        color: b.close >= b.open ? 'rgba(52,192,124,.35)' : 'rgba(229,84,79,.35)'})));
+      applyIndicators();
+      TV.timeScale().fitContent();
+    } else {
+      document.getElementById('chart-note').textContent =
+        'Chart engine failed to load — refresh the page.';
+    }
+    const last = chartData[chartData.length - 1];
+    if (last) document.getElementById('ohlc-readout').textContent =
+      `O ${last.open.toFixed(2)}  H ${last.high.toFixed(2)}  L ${last.low.toFixed(2)}  C ${last.close.toFixed(2)}  ·  ${chartData.length} bars · ${chartTf}`;
+    document.getElementById('chart-note').textContent =
+      'Real recorded bars from the tick store — delayed by definition, never presented as live.';
+  } catch (e) {
+    document.getElementById('ohlc-readout').textContent = 'Chart data unavailable: ' + e.message;
   }
-  bars.forEach((b, i) => {
-    const x = padL + i * (iw / bars.length) + 1, up = b.c >= b.o;
-    const col = up ? '#34c07c' : '#e5544f';
-    s += `<line x1="${x + bw / 2}" y1="${y(b.h)}" x2="${x + bw / 2}" y2="${y(b.l)}" stroke="${col}" stroke-width="1"/>` +
-         `<rect x="${x}" y="${Math.min(y(b.o), y(b.c))}" width="${bw}" height="${Math.max(1, Math.abs(y(b.c) - y(b.o)))}" fill="${col}"/>`;
-  });
-  const lastP = bars[bars.length - 1].c;
-  s += `<line x1="${padL}" y1="${y(lastP)}" x2="${W - padR}" y2="${y(lastP)}" stroke="#d4a843" stroke-dasharray="4,3" opacity=".7"/>` +
-       `<rect x="${W - padR + 2}" y="${y(lastP) - 9}" width="58" height="18" rx="4" fill="#d4a843"/>` +
-       `<text x="${W - padR + 8}" y="${y(lastP) + 4}" fill="#14100a" font-size="11" font-weight="700" font-family="monospace">${lastP.toFixed(1)}</text>`;
-  svg.innerHTML = s;
 }
+window.addEventListener('resize', () => { if (chartReady) TV.resize(document.getElementById('chart-container').clientWidth, 440); });
 
 /* ── strategy lab ──────────────────────────────────────── */
 const DEF_PARAMS = {

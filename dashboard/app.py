@@ -60,6 +60,14 @@ def index():
                                      PAGE_FILES[page]))
 
 
+@app.get("/vendor/lightweight-charts.js")
+def vendor_lwcharts():
+    """Vendored TradingView Lightweight Charts (Apache-2.0)."""
+    return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "vendor", "lightweight-charts.js"),
+                        media_type="application/javascript")
+
+
 @app.get("/admin")
 def admin():
     """Admin panel: UI routing, AI provider, platform controls."""
