@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paradox — Gold Trading Portal</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0e14;
+    --surface: #10161f;
+    --surface-2: #151d29;
+    --border: #1f2a38;
+    --text: #e6edf5;
+    --text-dim: #8a97a8;
+    --text-faint: #5c6a7d;
+    --accent: #d4a843;
+    --accent-soft: rgba(212,168,67,.12);
+    --green: #34c07c;
+    --red: #e5544f;
+    --amber: #d99a3d;
+    --blue: #4f8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    background: var(--bg); color: var(--text);
+    margin: 0; font-size: 14px; line-height: 1.5;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  header {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px; height: 60px;
+    background: rgba(10,14,20,.94); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand-mark { color: var(--accent); font-size: 20px; }
+  .brand-name { font-weight: 750; font-size: 17px; letter-spacing: .06em; }
+  .brand-sub { color: var(--text-faint); font-size: 12px; }
+  .hdr-right { display: flex; align-items: center; gap: 14px; }
+  .hdr-link { color: var(--text-dim); font-size: 12.5px; text-decoration: none; }
+  .hdr-link:hover { color: var(--text); }
+  .badge {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
+    padding: 4px 10px; border-radius: 999px; text-transform: uppercase;
+    background: rgba(217,154,61,.15); color: var(--amber);
+  }
+
+  nav.tabs { display: flex; gap: 4px; padding: 0 28px; border-bottom: 1px solid var(--border); background: var(--bg); }
+  .tab {
+    padding: 12px 18px; color: var(--text-dim); cursor: pointer;
+    font-size: 13.5px; font-weight: 550; border-bottom: 2px solid transparent;
+    user-select: none;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 26px 28px 60px; }
+  section[hidden] { display: none; }
+  .page-title { font-size: 21px; font-weight: 650; margin: 0 0 4px; }
+  .page-sub { color: var(--text-dim); font-size: 13px; margin: 0 0 22px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 22px; margin-bottom: 18px;
+  }
+  .card h3 { margin: 0 0 14px; font-size: 12.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim); }
+  .muted { color: var(--text-faint); font-size: 12.5px; }
+
+  /* price strip */
+  .price-strip { display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap; }
+  .px-main { font-size: 40px; font-weight: 700; letter-spacing: -.01em; line-height: 1; }
+  .px-chg { font-size: 15px; font-weight: 600; padding-bottom: 4px; }
+  .up { color: var(--green); } .down { color: var(--red); }
+  .px-cell { padding-bottom: 3px; }
+  .px-cell .k { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em; }
+  .px-cell .v { font-size: 15px; font-weight: 600; }
+
+  /* timeframe selector */
+  .tf-row { display: flex; gap: 6px; margin: 16px 0 12px; }
+  .tf {
+    padding: 5px 12px; border-radius: 7px; font-size: 12.5px; font-weight: 600;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim); cursor: pointer;
+  }
+  .tf:hover { color: var(--text); }
+  .tf.active { background: var(--accent-soft); border-color: rgba(212,168,67,.4); color: var(--accent); }
+
+  .range-row { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+
+  /* stat cards */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  .stat .k { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
+  .stat .v { font-size: 22px; font-weight: 700; }
+
+  /* forms */
+  label { display: block; font-size: 11.5px; color: var(--text-dim); margin-bottom: 4px; }
+  input, select {
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 13.5px; outline: none; width: 100%;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  .btn {
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 16px; font-size: 13.5px; cursor: pointer; font-weight: 550;
+  }
+  .btn:hover { border-color: var(--text-faint); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #14100a; font-weight: 650; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+
+  /* method copy */
+  .method p { color: var(--text-dim); font-size: 14px; margin: 0 0 14px; max-width: 70ch; }
+  .method b { color: var(--text); font-weight: 600; }
+  ul.rules { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 13.5px; }
+  ul.rules li { margin-bottom: 8px; }
+  ul.rules b { color: var(--text); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); padding: 6px 10px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  td { padding: 8px 10px; border-bottom: 1px solid #182130; }
+
+  /* login */
+  #login-overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(6,9,13,.82); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #login-overlay[hidden] { display: none; }
+  .login-card { width: 340px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; }
+  .login-title { font-size: 18px; font-weight: 650; margin-bottom: 2px; }
+  .login-sub { color: var(--text-faint); font-size: 12.5px; margin-bottom: 20px; }
+  .login-card label { margin-bottom: 14px; }
+  .form-error { color: var(--red); font-size: 12px; margin-top: 10px; min-height: 15px; }
+  .btn.wide { width: 100%; }
+
+  svg { display: block; }
+  @media (max-width: 720px) { main { padding: 18px 14px 40px; } header { padding: 0 14px; } nav.tabs { padding: 0 8px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="brand-mark">◇</span>
+    <span class="brand-name">PARADOX</span>
+    <span class="brand-sub">Gold Trading · Client Portal</span>
+  </div>
+  <div class="hdr-right">
+    <span class="badge" id="data-badge">DELAYED DATA</span>
+    <a class="hdr-link" href="/console">Console</a>
+  </div>
+</header>
+
+<div id="login-overlay" hidden>
+  <div class="login-card" id="login-box">
+    <div class="login-title">Sign in</div>
+    <div class="login-sub">Client portal access</div>
+    <label>User<input id="l-user" value="admin" autocomplete="username"></label>
+    <label>Password<input id="l-pass" type="password" autocomplete="current-password"></label>
+    <label>TOTP <span class="muted">(only if MFA is enabled)</span><input id="l-totp" placeholder="6-digit code" inputmode="numeric"></label>
+    <button class="btn primary wide" onclick="doLogin()">Sign in</button>
+    <div id="l-err" class="form-error"></div>
+  </div>
+</div>
+
+<nav class="tabs">
+  <div class="tab active" data-tab="trading">Trading</div>
+  <div class="tab" data-tab="performance">Performance</div>
+  <div class="tab" data-tab="method">Method</div>
+</nav>
+
+<main>
+  <!-- ── TRADING ─────────────────────────────────────── -->
+  <section id="tab-trading">
+    <h1 class="page-title">XAU / USD <span class="muted" style="font-weight:400">· Gold spot</span></h1>
+    <p class="page-sub">Real recorded market data, replayed with a delay. Never presented as live.</p>
+
+    <div class="card">
+      <div class="price-strip" id="price-strip">
+        <div>
+          <div class="px-main mono" id="px-last">—</div>
+          <div class="px-chg" id="px-chg">—</div>
+        </div>
+        <div class="px-cell"><div class="k">Range high</div><div class="v mono" id="px-high">—</div></div>
+        <div class="px-cell"><div class="k">Range low</div><div class="v mono" id="px-low">—</div></div>
+        <div class="px-cell"><div class="k">Bars shown</div><div class="v mono" id="px-bars">—</div></div>
+        <div class="px-cell"><div class="k">Window</div><div class="v mono" id="px-window" style="font-size:12.5px">—</div></div>
+      </div>
+
+      <div class="tf-row" id="tf-row">
+        <div class="tf" data-tf="5m">5m</div>
+        <div class="tf active" data-tf="15m">15m</div>
+        <div class="tf" data-tf="30m">30m</div>
+        <div class="tf" data-tf="1h">1h</div>
+        <div class="tf" data-tf="1d">1D</div>
+      </div>
+      <svg id="chart" width="100%" height="380" viewBox="0 0 1100 380" preserveAspectRatio="none"></svg>
+      <div class="muted" id="chart-note" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <!-- ── PERFORMANCE ─────────────────────────────────── -->
+  <section id="tab-performance" hidden>
+    <h1 class="page-title">Strategy Performance</h1>
+    <p class="page-sub">Deterministic backtest on real bars — historical simulation, not a forecast.</p>
+
+    <div class="card">
+      <h3>Backtest setup</h3>
+      <div class="range-row" id="range-row">
+        <div class="tf" data-days="7">1W</div>
+        <div class="tf" data-days="30">1M</div>
+        <div class="tf active" data-days="90">3M</div>
+        <div class="tf" data-days="180">6M</div>
+        <div class="tf" data-days="365">1Y</div>
+      </div>
+      <div class="fields" style="max-width:640px">
+        <div><label>EMA fast</label><input id="bt-fast" value="20"></div>
+        <div><label>EMA slow</label><input id="bt-slow" value="60"></div>
+        <div><label>Risk % per trade</label><input id="bt-risk" value="0.5"></div>
+        <div><label>Reward : risk</label><input id="bt-rr" value="1.5"></div>
+      </div>
+      <div style="margin-top:14px">
+        <button class="btn primary" onclick="runBacktest()">Run backtest</button>
+      </div>
+    </div>
+
+    <div class="stats" id="bt-stats" hidden>
+      <div class="stat"><div class="k">Trades</div><div class="v mono" id="st-trades">—</div></div>
+      <div class="stat"><div class="k">Final equity</div><div class="v mono" id="st-equity">—</div></div>
+      <div class="stat"><div class="k">Return</div><div class="v mono" id="st-return">—</div></div>
+      <div class="stat"><div class="k">Max drawdown</div><div class="v mono" id="st-dd">—</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Equity curve &amp; drawdown</h3>
+      <svg id="eq-chart" width="100%" height="260" viewBox="0 0 1100 260" preserveAspectRatio="none"></svg>
+      <div class="muted" id="bt-note" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <!-- ── METHOD ──────────────────────────────────────── -->
+  <section id="tab-method" hidden>
+    <h1 class="page-title">Method</h1>
+    <p class="page-sub">How this platform actually works — no marketing gloss.</p>
+
+    <div class="card method">
+      <h3>The engine</h3>
+      <p>Every strategy is backtested on a <b>tick-by-tick simulation engine</b> — over
+      <b>207 million real recorded XAUUSD ticks</b>, not resampled minute bars. Stops,
+      take-profits, slippage, swap and latency are evaluated on every single tick,
+      the same way a broker would fill them.</p>
+      <p>The engine is <b>deterministic</b>: the same data and settings always produce
+      the same result, bit for bit. Results are reproducible and auditable.</p>
+    </div>
+
+    <div class="card method">
+      <h3>Risk &amp; compliance gates</h3>
+      <ul class="rules">
+        <li><b>Every order passes the same pipeline</b> — sizing, risk limits, compliance
+        rules and mode approval. No signal can bypass the gates, in backtest or live.</li>
+        <li><b>Fail closed</b> — if a rule set isn't verified, if the kill switch is engaged,
+        or if account data is missing, orders are refused. The platform never guesses.</li>
+        <li><b>Honest data labels</b> — delayed, synthetic and stale feeds are labelled as
+        exactly what they are. Nothing recorded is ever presented as live.</li>
+        <li><b>Kill switch</b> — a human can block all new entries instantly, and every
+        action is written to an audit log.</li>
+      </ul>
+    </div>
+
+    <div class="card method">
+      <h3>What this portal shows</h3>
+      <p>The charts use <b>real recorded market data</b>, replayed with a delay.
+      The performance numbers come from the same deterministic engine that runs
+      the research pipeline — same fills, same costs, same rules.</p>
+      <p class="muted">Past performance of a backtest is not indicative of future results.
+      Live execution stays locked until explicit human sign-off.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+let TOKEN = sessionStorage.getItem('dsh_token') || '';
+const HOLDOUT_START = 1778995200000;   // data window ends here (frozen holdout beyond)
+
+/* ── tabs ──────────────────────────────────────────────── */
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.querySelectorAll('main > section').forEach(s => s.hidden = true);
+  document.getElementById('tab-' + t.dataset.tab).hidden = false;
+  if (t.dataset.tab === 'trading' && !STATE.bars.length) loadChart();
+}));
+
+/* ── auth ──────────────────────────────────────────────── */
+async function j(url, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({'Authorization': 'Bearer ' + TOKEN}, opts.headers || {});
+  const r = await fetch(url, opts);
+  if (r.status === 401) showLogin('Session expired — sign in again.');
+  return {ok: r.ok, status: r.status, body: await r.json().catch(() => ({}))};
+}
+function showLogin(msg) {
+  document.getElementById('login-overlay').hidden = false;
+  document.getElementById('l-err').textContent = msg || '';
+}
+async function doLogin() {
+  const r = await fetch('/api/platform/auth/login', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username: v('l-user'), password: v('l-pass'),
+                          totp: v('l-totp') || null})});
+  if (!r.ok) { showLogin('Login failed — check the password.'); return; }
+  TOKEN = (await r.json()).token;
+  sessionStorage.setItem('dsh_token', TOKEN);
+  document.getElementById('login-overlay').hidden = true;
+  loadChart();
+}
+(async () => {
+  const s = await fetch('/api/platform/auth/state').then(r => r.json());
+  if (!s.configured) showLogin('AUTH NOT CONFIGURED — set DSH_ADMIN_PASSWORD.');
+  else if (!TOKEN) showLogin('');
+})();
+
+const v = id => document.getElementById(id).value;
+
+/* ── trading chart ─────────────────────────────────────── */
+const STATE = { tf: '15m', days: 30, bars: [], trades: [] };
+
+document.querySelectorAll('#tf-row .tf').forEach(el => el.addEventListener('click', () => {
+  document.querySelectorAll('#tf-row .tf').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+  STATE.tf = el.dataset.tf;
+  loadChart();
+}));
+
+async function loadChart() {
+  const end = HOLDOUT_START, start = end - STATE.days * 86400000;
+  const b = await j(`/api/platform/charts/bars?tf=${STATE.tf}&start_ms=${start}&end_ms=${end}`);
+  if (!b.ok) { document.getElementById('chart-note').textContent = 'Chart data unavailable for this window.'; return; }
+  STATE.bars = b.body.bars;
+  renderChart(STATE.bars, []);
+  const last = STATE.bars[STATE.bars.length - 1], first = STATE.bars[0];
+  const chg = last.c - first.o, pct = chg / first.o * 100;
+  document.getElementById('px-last').textContent = last.c.toFixed(2);
+  const ce = document.getElementById('px-chg');
+  ce.textContent = `${chg >= 0 ? '▲' : '▼'} ${chg >= 0 ? '+' : ''}${chg.toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%) over window`;
+  ce.className = 'px-chg ' + (chg >= 0 ? 'up' : 'down');
+  document.getElementById('px-high').textContent = Math.max(...STATE.bars.map(x => x.h)).toFixed(2);
+  document.getElementById('px-low').textContent = Math.min(...STATE.bars.map(x => x.l)).toFixed(2);
+  document.getElementById('px-bars').textContent = STATE.bars.length;
+  document.getElementById('px-window').textContent =
+    `${STATE.bars[0].t.slice(0, 10)} → ${last.t.slice(0, 10)}`;
+  document.getElementById('chart-note').textContent =
+    b.body.source_label + ' — ' + b.body.source_detail + '.';
+}
+
+function renderChart(bars, trades) {
+  const svg = document.getElementById('chart');
+  const W = 1100, H = 380, padL = 8, padR = 64, padT = 14, padB = 22;
+  if (!bars.length) { svg.innerHTML = ''; return; }
+  const lo = Math.min(...bars.map(b => b.l)), hi = Math.max(...bars.map(b => b.h));
+  const pad = (hi - lo) * 0.06 || 1;
+  const ylo = lo - pad, yhi = hi + pad;
+  const y = p => padT + (yhi - p) / (yhi - ylo) * (H - padT - padB);
+  const iw = W - padL - padR, bw = Math.max(1.5, iw / bars.length - 1.2);
+  // gridlines + price axis
+  let s = '';
+  const steps = 5;
+  for (let g = 0; g <= steps; g++) {
+    const pv = ylo + (yhi - ylo) * g / steps, py = y(pv);
+    s += `<line x1="${padL}" y1="${py}" x2="${W - padR}" y2="${py}" stroke="#182130" stroke-width="1"/>` +
+         `<text x="${W - padR + 8}" y="${py + 4}" fill="#5c6a7d" font-size="11" font-family="monospace">${pv.toFixed(1)}</text>`;
+  }
+  bars.forEach((b, i) => {
+    const x = padL + i * (iw / bars.length) + 1, up = b.c >= b.o;
+    const col = up ? '#34c07c' : '#e5544f';
+    s += `<line x1="${x + bw / 2}" y1="${y(b.h)}" x2="${x + bw / 2}" y2="${y(b.l)}" stroke="${col}" stroke-width="1"/>` +
+         `<rect x="${x}" y="${Math.min(y(b.o), y(b.c))}" width="${bw}" height="${Math.max(1, Math.abs(y(b.c) - y(b.o)))}" fill="${col}"/>`;
+  });
+  // last price marker
+  const lastP = bars[bars.length - 1].c;
+  s += `<line x1="${padL}" y1="${y(lastP)}" x2="${W - padR}" y2="${y(lastP)}" stroke="#d4a843" stroke-width="1" stroke-dasharray="4,3" opacity=".7"/>` +
+       `<rect x="${W - padR + 2}" y="${y(lastP) - 9}" width="58" height="18" rx="4" fill="#d4a843"/>` +
+       `<text x="${W - padR + 8}" y="${y(lastP) + 4}" fill="#14100a" font-size="11" font-weight="700" font-family="monospace">${lastP.toFixed(1)}</text>`;
+  svg.innerHTML = s;
+}
+
+/* ── performance ───────────────────────────────────────── */
+document.querySelectorAll('#range-row .tf').forEach(el => el.addEventListener('click', () => {
+  document.querySelectorAll('#range-row .tf').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+  STATE.days = parseInt(el.dataset.days);
+}));
+
+async function runBacktest() {
+  const end = HOLDOUT_START, start = end - STATE.days * 86400000;
+  const q = `tf=15m&start_ms=${start}&end_ms=${end}` +
+    `&fast=${v('bt-fast')}&slow=${v('bt-slow')}&risk_pct=${v('bt-risk')}&rr=${v('bt-rr')}`;
+  const bt = await j(`/api/platform/charts/backtest?${q}`);
+  if (!bt.ok) { document.getElementById('bt-note').textContent = 'Backtest unavailable for this window.'; return; }
+  const s = bt.body.summary;
+  document.getElementById('bt-stats').hidden = false;
+  document.getElementById('st-trades').textContent = s.n_trades;
+  document.getElementById('st-equity').textContent = '$' + s.final_equity.toFixed(2);
+  const ret = (s.final_equity - 10000) / 10000 * 100;
+  const re = document.getElementById('st-return');
+  re.textContent = (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%';
+  re.className = 'v mono ' + (ret >= 0 ? 'up' : 'down');
+  document.getElementById('st-dd').textContent = s.max_drawdown_pct.toFixed(2) + '%';
+  drawEq(bt.body.equity, bt.body.drawdown_pct);
+  document.getElementById('bt-note').textContent =
+    bt.body.source_label + ' — ' + bt.body.source_detail + '.';
+}
+
+function drawEq(equity, dd) {
+  const svg = document.getElementById('eq-chart');
+  const W = 1100, H = 260, padL = 8, padR = 60, padT = 14, padB = 14;
+  if (!equity || equity.length < 2) { svg.innerHTML = ''; return; }
+  const vals = equity.map(p => p.v);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.08 || 1;
+  const y = vv => padT + (hi + pad - vv) / (hi - lo + 2 * pad) * (H - padT - padB);
+  const x = i => padL + i / (equity.length - 1) * (W - padL - padR);
+  let s = '';
+  for (let g = 0; g <= 4; g++) {
+    const pv = lo - pad + (hi - lo + 2 * pad) * g / 4, py = y(pv);
+    s += `<line x1="${padL}" y1="${py}" x2="${W - padR}" y2="${py}" stroke="#182130"/>` +
+         `<text x="${W - padR + 8}" y="${py + 4}" fill="#5c6a7d" font-size="11" font-family="monospace">$${pv.toFixed(0)}</text>`;
+  }
+  s += `<polyline fill="none" stroke="#34c07c" stroke-width="1.8" points="${equity.map((p, i) => x(i) + ',' + y(p.v)).join(' ')}"/>`;
+  if (dd && dd.length) {
+    const dhi = Math.max(...dd.map(p => p.v), 1);
+    const dy = vv => padT + vv / dhi * (H - padT - padB);
+    s += `<polyline fill="none" stroke="#e5544f" stroke-width="1" stroke-dasharray="4,3" points="${dd.map((p, i) => x(i) + ',' + dy(p.v)).join(' ')}"/>`;
+  }
+  svg.innerHTML = s;
+}
+
+if (TOKEN) loadChart();
+</script>
+</body>
+</html>
