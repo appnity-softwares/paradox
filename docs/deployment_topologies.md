@@ -61,3 +61,26 @@ accounts copy trades with a local copier EA.
    (Option 4) and deploy the bridge (checklist in
    deploy_windows_bridge.md).
 3. At scale (multiple accounts): Option 3 split.
+
+## Linux-only hosting paths (MT5 on/around Ubuntu)
+
+The MetaTrader5 Python package is Windows-only (verified on PyPI).
+Paths to keep everything on one Ubuntu box:
+
+1. **Windows VM on Ubuntu (KVM/VirtualBox)** — fully works (the VM is
+   real Windows); needs a Windows licence and ~4 GB RAM overhead.
+   The most reliable single-server option.
+2. **Wine + MT5 terminal + MQL5 socket EA** — the terminal runs under
+   Wine (community-proven, NOT vendor-supported); the Python package
+   does not run under Wine, so an in-terminal EA must bridge via
+   socket/file. Still requires firm EA permission, and Wine prefix/
+   terminal updates are fragile. NOT recommended for production
+   money handling; acceptable for paper experiments.
+3. **Third-party hosted MT5 APIs (e.g. metaapi.cloud)** — pure Linux,
+   but the third party holds the account credentials: a trust risk
+   for funded prop accounts and potentially a ToS violation. Not
+   recommended for prop accounts.
+4. **MT5 web terminal** — no API; unusable for automation.
+
+Cost note: option 1's licence + RAM roughly equals a small Windows
+VPS, so the split topology remains the simpler production path.
