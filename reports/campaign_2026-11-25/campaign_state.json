@@ -1,0 +1,628 @@
+{
+ "any_candidate_passed": false,
+ "dataset_hash_prefix": "03e63637f06597a8",
+ "elapsed_s": 483.9,
+ "holdout_opened": false,
+ "holdout_range": [
+  1778995200000,
+  1794720000000
+ ],
+ "holdout_results": [],
+ "risk_pct_derived": 0.25,
+ "screening_trials": 540,
+ "train_range": [
+  1704067200000,
+  1778995200000
+ ],
+ "walk_forward": [
+  {
+   "all_gates_passed": false,
+   "cost_stress": {
+    "x1": {
+     "expectancy_r": -0.4035,
+     "pf": 0.413
+    },
+    "x1.5": {
+     "expectancy_r": -0.4059,
+     "pf": 0.41
+    },
+    "x2": {
+     "expectancy_r": -0.4083,
+     "pf": 0.406
+    }
+   },
+   "deflated_sharpe_prob": 0.0024,
+   "folds": [
+    {
+     "end_ms": 1719619200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 1,
+       "news_window": 0,
+       "prohibited_style_martingale": 0,
+       "session_no_new_entries": 0
+      },
+      "expectancy_r": 0.6915,
+      "lookahead_violations": 0,
+      "max_dd_pct": 0.811,
+      "max_losing_streak": 3,
+      "n_trades": 22,
+      "net_profit_usd": 283.55,
+      "no_trade_day_share": 0.8359,
+      "pf": 2.087,
+      "ticks_replayed": 3722076,
+      "trades_per_day_avg": 0.1719,
+      "win_rate_pct": 36.36
+     },
+     "start_ms": 1704067200000
+    },
+    {
+     "end_ms": 1735171200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 0,
+       "news_window": 0,
+       "prohibited_style_martingale": 0,
+       "session_no_new_entries": 0
+      },
+      "expectancy_r": -0.012,
+      "lookahead_violations": 0,
+      "max_dd_pct": 3.546,
+      "max_losing_streak": 4,
+      "n_trades": 16,
+      "net_profit_usd": -12.43,
+      "no_trade_day_share": 0.875,
+      "pf": 0.981,
+      "ticks_replayed": 5522200,
+      "trades_per_day_avg": 0.125,
+      "win_rate_pct": 37.5
+     },
+     "start_ms": 1719619200000
+    },
+    {
+     "end_ms": 1750723200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 0,
+       "news_window": 0,
+       "prohibited_style_martingale": 0,
+       "session_no_new_entries": 1
+      },
+      "expectancy_r": -0.0083,
+      "lookahead_violations": 0,
+      "max_dd_pct": 3.253,
+      "max_losing_streak": 3,
+      "n_trades": 29,
+      "net_profit_usd": -9.36,
+      "no_trade_day_share": 0.7969,
+      "pf": 0.986,
+      "ticks_replayed": 5640601,
+      "trades_per_day_avg": 0.2266,
+      "win_rate_pct": 41.38
+     },
+     "start_ms": 1735171200000
+    },
+    {
+     "end_ms": 1766275200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 0,
+       "news_window": 0,
+       "prohibited_style_martingale": 0,
+       "session_no_new_entries": 1
+      },
+      "expectancy_r": -0.4035,
+      "lookahead_violations": 0,
+      "max_dd_pct": 2.182,
+      "max_losing_streak": 4,
+      "n_trades": 16,
+      "net_profit_usd": -189.51,
+      "no_trade_day_share": 0.8906,
+      "pf": 0.413,
+      "ticks_replayed": 5018662,
+      "trades_per_day_avg": 0.125,
+      "win_rate_pct": 31.25
+     },
+     "start_ms": 1750723200000
+    }
+   ],
+   "gate_metrics": {
+    "expectancy_r_after_2x_costs": -0.4083,
+    "max_losing_streak": 4,
+    "mc95_dd_pct": 0.041,
+    "n_trades": 83,
+    "no_trade_day_share": 0.8906,
+    "oos_max_dd_pct": 3.546,
+    "pf_after_2x_costs": 0.406,
+    "streak_dd_pct": 3.546,
+    "trades_per_day_avg": 0.1621,
+    "win_rate": 36.6225
+   },
+   "gates": [
+    {
+     "name": "oos_max_dd",
+     "passed": false,
+     "threshold": "<= 2.0",
+     "value": 3.546
+    },
+    {
+     "name": "hard_cap_dd",
+     "passed": false,
+     "threshold": "<= 3.0",
+     "value": 3.546
+    },
+    {
+     "name": "mc95_dd",
+     "passed": true,
+     "threshold": "<= 3.0",
+     "value": 0.041
+    },
+    {
+     "name": "pf_after_2x_costs",
+     "passed": false,
+     "threshold": "> 1.0",
+     "value": 0.406
+    },
+    {
+     "name": "expectancy_after_2x_costs",
+     "passed": false,
+     "threshold": "> 0",
+     "value": -0.4083
+    },
+    {
+     "name": "min_trades",
+     "passed": true,
+     "threshold": ">= 30",
+     "value": 83
+    },
+    {
+     "name": "streak_consequence_dd",
+     "passed": false,
+     "threshold": "<= 3.0",
+     "value": 3.546
+    },
+    {
+     "name": "trades_per_day_avg",
+     "passed": false,
+     "threshold": ">= 0.2",
+     "value": 0.1621
+    },
+    {
+     "name": "no_trade_day_share",
+     "passed": false,
+     "threshold": "<= 0.75",
+     "value": 0.8906
+    }
+   ],
+   "monte_carlo": {
+    "p50_ret_pct": -0.0020999999999937735,
+    "p5_ret_pct": -0.03370375000000314,
+    "p95_max_dd_pct": 0.04065059776305209,
+    "p95_ret_pct": 0.02840124999999527,
+    "prob_loss": 0.5445,
+    "sims": 2000
+   },
+   "params": {
+    "atr_pct": 60.0
+   },
+   "per_trade_sharpe": -0.0105,
+   "risk_pct": 0.25,
+   "session": "london_0700_1100",
+   "strategy": "ema_cross_vol_filter"
+  },
+  {
+   "all_gates_passed": false,
+   "cost_stress": {
+    "x1": {
+     "expectancy_r": 0.2753,
+     "pf": 1.661
+    },
+    "x1.5": {
+     "expectancy_r": 0.2707,
+     "pf": 1.65
+    },
+    "x2": {
+     "expectancy_r": 0.266,
+     "pf": 1.638
+    }
+   },
+   "deflated_sharpe_prob": 0.0013,
+   "folds": [
+    {
+     "end_ms": 1719619200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 0,
+       "news_window": 0,
+       "prohibited_style_martingale": 1,
+       "session_no_new_entries": 0
+      },
+      "expectancy_r": -0.0528,
+      "lookahead_violations": 0,
+      "max_dd_pct": 2.541,
+      "max_losing_streak": 6,
+      "n_trades": 42,
+      "net_profit_usd": -60.46,
+      "no_trade_day_share": 0.7109,
+      "pf": 0.908,
+      "ticks_replayed": 7971591,
+      "trades_per_day_avg": 0.3281,
+      "win_rate_pct": 42.86
+     },
+     "start_ms": 1704067200000
+    },
+    {
+     "end_ms": 1735171200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 0,
+       "news_window": 0,
+       "prohibited_style_martingale": 1,
+       "session_no_new_entries": 0
+      },
+      "expectancy_r": 0.4785,
+      "lookahead_violations": 0,
+      "max_dd_pct": 1.214,
+      "max_losing_streak": 3,
+      "n_trades": 36,
+      "net_profit_usd": 334.44,
+      "no_trade_day_share": 0.7422,
+      "pf": 2.013,
+      "ticks_replayed": 10400585,
+      "trades_per_day_avg": 0.2812,
+      "win_rate_pct": 52.78
+     },
+     "start_ms": 1719619200000
+    },
+    {
+     "end_ms": 1750723200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 0,
+       "news_window": 0,
+       "prohibited_style_martingale": 1,
+       "session_no_new_entries": 1
+      },
+      "expectancy_r": -0.287,
+      "lookahead_violations": 0,
+      "max_dd_pct": 4.857,
+      "max_losing_streak": 10,
+      "n_trades": 48,
+      "net_profit_usd": -345.72,
+      "no_trade_day_share": 0.7031,
+      "pf": 0.583,
+      "ticks_replayed": 9438788,
+      "trades_per_day_avg": 0.375,
+      "win_rate_pct": 31.25
+     },
+     "start_ms": 1735171200000
+    },
+    {
+     "end_ms": 1766275200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 1,
+       "news_window": 0,
+       "prohibited_style_martingale": 0,
+       "session_no_new_entries": 0
+      },
+      "expectancy_r": 0.2753,
+      "lookahead_violations": 0,
+      "max_dd_pct": 1.533,
+      "max_losing_streak": 3,
+      "n_trades": 24,
+      "net_profit_usd": 181.15,
+      "no_trade_day_share": 0.8359,
+      "pf": 1.661,
+      "ticks_replayed": 9014478,
+      "trades_per_day_avg": 0.1875,
+      "win_rate_pct": 58.33
+     },
+     "start_ms": 1750723200000
+    }
+   ],
+   "gate_metrics": {
+    "expectancy_r_after_2x_costs": 0.266,
+    "max_losing_streak": 10,
+    "mc95_dd_pct": 0.049,
+    "n_trades": 150,
+    "no_trade_day_share": 0.8359,
+    "oos_max_dd_pct": 4.857,
+    "pf_after_2x_costs": 1.638,
+    "streak_dd_pct": 4.857,
+    "trades_per_day_avg": 0.2929,
+    "win_rate": 46.305
+   },
+   "gates": [
+    {
+     "name": "oos_max_dd",
+     "passed": false,
+     "threshold": "<= 2.0",
+     "value": 4.857
+    },
+    {
+     "name": "hard_cap_dd",
+     "passed": false,
+     "threshold": "<= 3.0",
+     "value": 4.857
+    },
+    {
+     "name": "mc95_dd",
+     "passed": true,
+     "threshold": "<= 3.0",
+     "value": 0.049
+    },
+    {
+     "name": "pf_after_2x_costs",
+     "passed": true,
+     "threshold": "> 1.0",
+     "value": 1.638
+    },
+    {
+     "name": "expectancy_after_2x_costs",
+     "passed": true,
+     "threshold": "> 0",
+     "value": 0.266
+    },
+    {
+     "name": "min_trades",
+     "passed": true,
+     "threshold": ">= 30",
+     "value": 150
+    },
+    {
+     "name": "streak_consequence_dd",
+     "passed": false,
+     "threshold": "<= 3.0",
+     "value": 4.857
+    },
+    {
+     "name": "trades_per_day_avg",
+     "passed": true,
+     "threshold": ">= 0.2",
+     "value": 0.2929
+    },
+    {
+     "name": "no_trade_day_share",
+     "passed": false,
+     "threshold": "<= 0.75",
+     "value": 0.8359
+    }
+   ],
+   "monte_carlo": {
+    "p50_ret_pct": -0.005650000000001487,
+    "p5_ret_pct": -0.04152624999999799,
+    "p95_max_dd_pct": 0.04942999800060139,
+    "p95_ret_pct": 0.026430000000007278,
+    "prob_loss": 0.612,
+    "sims": 2000
+   },
+   "params": {
+    "atr_pct": 50.0
+   },
+   "per_trade_sharpe": -0.0221,
+   "risk_pct": 0.25,
+   "session": "newyork_1200_1600",
+   "strategy": "ema_cross_vol_filter"
+  },
+  {
+   "all_gates_passed": false,
+   "cost_stress": {
+    "x1": {
+     "expectancy_r": 0.1972,
+     "pf": 1.383
+    },
+    "x1.5": {
+     "expectancy_r": 0.1924,
+     "pf": 1.374
+    },
+    "x2": {
+     "expectancy_r": 0.1875,
+     "pf": 1.364
+    }
+   },
+   "deflated_sharpe_prob": 0.001,
+   "folds": [
+    {
+     "end_ms": 1719619200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 0,
+       "news_window": 0,
+       "prohibited_style_martingale": 2,
+       "session_no_new_entries": 0
+      },
+      "expectancy_r": 0.091,
+      "lookahead_violations": 0,
+      "max_dd_pct": 2.487,
+      "max_losing_streak": 8,
+      "n_trades": 58,
+      "net_profit_usd": 142.61,
+      "no_trade_day_share": 0.625,
+      "pf": 1.176,
+      "ticks_replayed": 7971591,
+      "trades_per_day_avg": 0.4531,
+      "win_rate_pct": 48.28
+     },
+     "start_ms": 1704067200000
+    },
+    {
+     "end_ms": 1735171200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 0,
+       "news_window": 0,
+       "prohibited_style_martingale": 0,
+       "session_no_new_entries": 0
+      },
+      "expectancy_r": 0.3107,
+      "lookahead_violations": 0,
+      "max_dd_pct": 1.107,
+      "max_losing_streak": 3,
+      "n_trades": 46,
+      "net_profit_usd": 300.57,
+      "no_trade_day_share": 0.6875,
+      "pf": 1.596,
+      "ticks_replayed": 10400585,
+      "trades_per_day_avg": 0.3594,
+      "win_rate_pct": 47.83
+     },
+     "start_ms": 1719619200000
+    },
+    {
+     "end_ms": 1750723200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 0,
+       "news_window": 0,
+       "prohibited_style_martingale": 2,
+       "session_no_new_entries": 1
+      },
+      "expectancy_r": -0.3129,
+      "lookahead_violations": 0,
+      "max_dd_pct": 6.036,
+      "max_losing_streak": 8,
+      "n_trades": 55,
+      "net_profit_usd": -449.66,
+      "no_trade_day_share": 0.6562,
+      "pf": 0.547,
+      "ticks_replayed": 9438788,
+      "trades_per_day_avg": 0.4297,
+      "win_rate_pct": 30.91
+     },
+     "start_ms": 1735171200000
+    },
+    {
+     "end_ms": 1766275200000,
+     "metrics": {
+      "behaviour_blocks": {
+       "max_modifications_per_trade": 0,
+       "max_orders_per_day": 0,
+       "min_hold_time": 1,
+       "news_window": 0,
+       "prohibited_style_martingale": 0,
+       "session_no_new_entries": 0
+      },
+      "expectancy_r": 0.1972,
+      "lookahead_violations": 0,
+      "max_dd_pct": 1.532,
+      "max_losing_streak": 4,
+      "n_trades": 33,
+      "net_profit_usd": 144.87,
+      "no_trade_day_share": 0.7812,
+      "pf": 1.383,
+      "ticks_replayed": 9014478,
+      "trades_per_day_avg": 0.2578,
+      "win_rate_pct": 48.48
+     },
+     "start_ms": 1750723200000
+    }
+   ],
+   "gate_metrics": {
+    "expectancy_r_after_2x_costs": 0.1875,
+    "max_losing_streak": 8,
+    "mc95_dd_pct": 0.052,
+    "n_trades": 192,
+    "no_trade_day_share": 0.7812,
+    "oos_max_dd_pct": 6.036,
+    "pf_after_2x_costs": 1.364,
+    "streak_dd_pct": 6.036,
+    "trades_per_day_avg": 0.375,
+    "win_rate": 43.875
+   },
+   "gates": [
+    {
+     "name": "oos_max_dd",
+     "passed": false,
+     "threshold": "<= 2.0",
+     "value": 6.036
+    },
+    {
+     "name": "hard_cap_dd",
+     "passed": false,
+     "threshold": "<= 3.0",
+     "value": 6.036
+    },
+    {
+     "name": "mc95_dd",
+     "passed": true,
+     "threshold": "<= 3.0",
+     "value": 0.052
+    },
+    {
+     "name": "pf_after_2x_costs",
+     "passed": true,
+     "threshold": "> 1.0",
+     "value": 1.364
+    },
+    {
+     "name": "expectancy_after_2x_costs",
+     "passed": true,
+     "threshold": "> 0",
+     "value": 0.1875
+    },
+    {
+     "name": "min_trades",
+     "passed": true,
+     "threshold": ">= 30",
+     "value": 192
+    },
+    {
+     "name": "streak_consequence_dd",
+     "passed": false,
+     "threshold": "<= 3.0",
+     "value": 6.036
+    },
+    {
+     "name": "trades_per_day_avg",
+     "passed": true,
+     "threshold": ">= 0.2",
+     "value": 0.375
+    },
+    {
+     "name": "no_trade_day_share",
+     "passed": false,
+     "threshold": "<= 0.75",
+     "value": 0.7812
+    }
+   ],
+   "monte_carlo": {
+    "p50_ret_pct": -0.00787500000000163,
+    "p5_ret_pct": -0.0419750000000052,
+    "p95_max_dd_pct": 0.05215354826497562,
+    "p95_ret_pct": 0.027758749999993164,
+    "prob_loss": 0.6405,
+    "sims": 2000
+   },
+   "params": {
+    "atr_pct": 40.0
+   },
+   "per_trade_sharpe": -0.0251,
+   "risk_pct": 0.25,
+   "session": "newyork_1200_1600",
+   "strategy": "ema_cross_vol_filter"
+  }
+ ]
+}

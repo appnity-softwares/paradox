@@ -15,7 +15,8 @@ from pathlib import Path
 
 import numpy as np
 
-from core.config import get_cost_model, register_cost_model
+from core.config import (get_cost_model, get_symbol_spec,
+                         register_cost_model)
 from core.research.gates import (ClientProfile, all_gates_passed,
                                  longest_losing_streak, streak_dd_pct,
                                  trade_calendar_stats)
@@ -63,7 +64,10 @@ SESSIONS = [LONDON, NEW_YORK, OVERLAP]
 
 
 def session_days_between(start_ms: int, end_ms: int) -> int:
-    return max(1, (end_ms - start_ms) // 86_400_000)
+    """WEEKDAYS in range — weekends have no XAUUSD ticks and must not
+    inflate the no-trade-day share."""
+    days = (end_ms - start_ms) // 86_400_000
+    return max(1, int(days * 5.0 / 7.0))
 
 
 def run_trial(strategy, ticks_df, *, start_ms: int, end_ms: int,
@@ -71,16 +75,26 @@ def run_trial(strategy, ticks_df, *, start_ms: int, end_ms: int,
               initial_balance: float = 10_000.0,
               news_windows: tuple = (),
               cost_multiplier: float = 1.0,
+              min_hold_seconds: int = 300,
+              max_orders_per_day: int = 6,
+              return_trades: bool = False,
               dataset_hash: str = "u7-campaign") -> dict:
-    """One trial: session-filtered tick replay -> metrics dict."""
+    """One trial: session-filtered tick replay -> metrics dict.
+
+    U1 behaviour controls are ON for every campaign trial (min hold
+    5 minutes, max 6 orders/day, martingale prohibited) — the client
+    profile requires them and the engine must enforce, not trust."""
     cfg = BacktestConfig(
         symbol="XAUUSD", initial_balance=initial_balance,
         risk_pct=risk_pct, dataset_hash=dataset_hash,
         cost_key=scaled_cost_key("XAUUSD_ECN", cost_multiplier),
         bar_timeframe="5m",
         session_start_min=session.start_min, session_end_min=session.end_min,
-        session_days=tuple(range(7)), flatten_at_session_end=True,
-        news_windows=news_windows)
+        session_days=tuple(range(5)), flatten_at_session_end=True,
+        news_windows=news_windows,
+        min_hold_seconds=min_hold_seconds,
+        max_orders_per_day=max_orders_per_day,
+        prohibited_styles=("martingale",))
     res = TickEngine().run(strategy, ticks_df, cfg)
     trades = res.get("trades", [])
     pnls = [t["pnl"] for t in trades]
@@ -90,11 +104,18 @@ def run_trial(strategy, ticks_df, *, start_ms: int, end_ms: int,
     per_day, no_trade = trade_calendar_stats(
         [t.get("exit_time_utc_ms", t.get("entry_time_utc_ms", 0))
          for t in trades], session_days_between(start_ms, end_ms))
-    avg_win = float(np.mean(wins)) if wins else 0.0
+    # R multiples: pnl / initial risk of that trade (entry vs stop).
+    contract = get_symbol_spec("XAUUSD").contract_size
+    r_mults = []
+    for t in trades:
+        risk_usd = abs(t.get("entry_price", 0.0) - (t.get("sl") or 0.0)) \
+            * t.get("volume", 0.0) * contract
+        r_mults.append(t["pnl"] / risk_usd if risk_usd > 0 else 0.0)
     avg_loss = float(abs(np.mean(losses))) if losses else 1.0
-    expectancy_r = ((avg_win - 0.0) / avg_loss * len(wins) - len(losses)) \
-        / len(pnls) if pnls else 0.0
-    return {
+    expectancy_r = ((float(np.mean(wins)) if wins else 0.0) - 0.0) \
+        / avg_loss * (len(wins) / len(pnls)) - (len(losses) / len(pnls)) \
+        if pnls else 0.0
+    out = {
         "n_trades": len(trades),
         "net_profit_usd": res.get("net_profit_usd", 0.0),
         "win_rate_pct": res.get("win_rate_pct", 0.0),
@@ -108,6 +129,10 @@ def run_trial(strategy, ticks_df, *, start_ms: int, end_ms: int,
         "lookahead_violations": len(res.get("lookahead_violations", [])),
         "behaviour_blocks": res.get("behaviour_blocks", {}),
     }
+    if return_trades:
+        out["trades"] = trades
+        out["r_multiples"] = [round(r, 4) for r in r_mults]
+    return out
 
 
 class TrialStore:
