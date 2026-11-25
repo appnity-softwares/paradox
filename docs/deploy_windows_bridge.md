@@ -68,3 +68,24 @@ PASS/FAIL per item and exits non-zero on any FAIL:
 8. Health endpoint responds with a fresh quote.
 9. Time sync: `w32tm /query /status` shows source, offset < 1 s.
 10. One terminal per account: no duplicate terminal paths in config.
+
+## Hosting topology: Ubuntu + Windows split (verified 2026-11-25)
+
+The MetaTrader5 Python package is Windows-only (verified on PyPI:
+all wheels are `*-win_amd64.whl`, `platform: Windows`). The platform
+itself is pure Python and runs anywhere. Recommended topology:
+
+- **Ubuntu VPS** — the entire platform: tick engine, research,
+  campaigns, dashboard, compliance, monitoring. Requirements: Python
+  3.12+, ~4 GB RAM, ~5 GB disk for the tick store. Deployment:
+  `python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt`,
+  copy `data/` (parquet is portable), run uvicorn behind a reverse
+  proxy with TLS.
+- **Windows VPS** — ONLY the MT5 terminal(s) + bridge process, one
+  terminal per account, per the checklist above.
+- The two talk over TLS with a per-account bridge token and an IP
+  allow-list on the Windows side (only the Ubuntu VPS egress IP).
+
+Single-VPS alternatives: a firm offering cTrader (Open API is
+cross-platform — no MT5 needed) or FIX API access. Wine is NOT a
+supported path for the MetaTrader5 Python package.
