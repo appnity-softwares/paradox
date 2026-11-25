@@ -261,6 +261,15 @@
         <div class="info-row"><span>London</span><span class="sess" id="s-lon"></span></div>
         <div class="info-row"><span>New York</span><span class="sess" id="s-ny"></span></div>
         <div class="info-row"><span>UTC now</span><b id="s-utc">—</b></div>
+        <div class="ws-title"><span>Volatility profile</span></div>
+        <div class="info-row"><span>ATR(14) · 15m</span><b id="v-atr15">—</b></div>
+        <div class="info-row"><span>ATR(14) · 1h</span><b id="v-atr60">—</b></div>
+        <div class="info-row"><span>ATR(14) · 4h</span><b id="v-atr240">—</b></div>
+        <div class="info-row"><span>Range · 15m bars</span><b id="v-range15">—</b></div>
+        <div class="ws-title"><span>Data feed</span></div>
+        <div class="info-row"><span>Provider</span><b id="df-provider" style="font-size:11px">—</b></div>
+        <div class="info-row"><span>Last tick</span><b id="df-age">—</b></div>
+        <div class="info-row"><span>Bars stored</span><b id="df-bars">—</b></div>
       </div>
 
       <!-- chart -->
@@ -280,13 +289,20 @@
             <span class="tf" data-ind="bb">BB</span>
             <span class="tf active" data-ind="vol">VOL</span>
             <span class="tf" data-ind="sma200">SMA200</span>
+            <span class="tf" data-ind="vwap">VWAP</span>
+            <span class="tf" data-ind="rsi">RSI</span>
           </span>
         </div>
         <div id="chart-wrap" style="position:relative;flex:1;min-height:0">
           <div id="chart-legend" class="mono" style="position:absolute;top:8px;left:10px;z-index:5;font-size:12px;color:var(--text-dim);pointer-events:none"></div>
           <div id="chart-container" style="height:100%;min-height:300px"></div>
         </div>
-        <div class="tf-row" style="padding:9px 12px;align-items:center;gap:12px;border-top:1px solid var(--border)">
+        <div class="tf-row" style="padding:9px 12px;align-items:center;gap:8px;border-top:1px solid var(--border)">
+          <span class="tf ctype active" onclick="setChartType('candles', this)">Candles</span>
+          <span class="tf ctype" onclick="setChartType('line', this)">Line</span>
+          <span class="tf ctype" onclick="setChartType('area', this)">Area</span>
+          <span class="tf" onclick="toggleLog(this)">LOG</span>
+          <span class="mono" style="margin-left:auto;font-size:12px;color:var(--accent)" id="bar-countdown" title="Time to bar close">--:--</span>
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="loadMainChart()">↻ Refresh</button>
           <span class="muted" id="chart-note" style="font-size:11.5px"></span>
         </div>
@@ -321,6 +337,10 @@
         <div class="ws-title"><span>Positions</span><span id="pos-badge" class="badge grey">0</span></div>
         <div class="scroll" style="max-height:220px"><table id="pos-table" style="font-size:12px"></table></div>
         <div style="padding:10px 12px"><button class="btn danger" style="width:100%;padding:8px;font-size:12.5px" onclick="closeAll()">Close all</button></div>
+        <div class="ws-title"><span>Account</span></div>
+        <div class="info-row"><span>Margin level</span><b id="ac-mlevel">—</b></div>
+        <div class="info-row"><span>Kill switch</span><b id="ac-kill">—</b></div>
+        <div class="info-row"><span>Open positions</span><b id="ac-open">—</b></div>
       </div>
     </div>
 
@@ -491,7 +511,7 @@ async function api(url, opts) {
 
 /* ── tabs ──────────────────────────────────────────────── */
 const loaders = {
-  terminal: () => { refreshAccount(); refreshPositions(); loadMainChart(); loadDayStats(); loadTape(); tickClock(); },
+  terminal: () => { refreshAccount(); refreshPositions(); loadMainChart(); loadDayStats(); loadVolatility(); loadFeedInfo(); loadTape(); tickClock(); },
   strategy: () => {},
   propfirm: () => initPropFirm(),
   copilot: () => {},
@@ -602,6 +622,56 @@ async function loadDayStats() {
     $('wl-chg').className = 'wl-chg ' + (chg >= 0 ? 'up' : 'down');
   } catch (e) {}
 }
+
+function atrOf(bars, n = 14) {
+  if (bars.length < n + 1) return null;
+  const trs = [];
+  for (let i = 1; i < bars.length; i++) {
+    trs.push(Math.max(bars[i].high - bars[i].low,
+      Math.abs(bars[i].high - bars[i - 1].close),
+      Math.abs(bars[i].low - bars[i - 1].close)));
+  }
+  return trs.slice(-n).reduce((s, v) => s + v, 0) / n;
+}
+
+/* live bar-building appends flat single-tick bars at the end of the
+   series; drop those so the volatility profile reflects real bars */
+function realBars(bars) {
+  const out = bars.slice();
+  while (out.length && out[out.length - 1].open === out[out.length - 1].close &&
+         out[out.length - 1].high === out[out.length - 1].low) out.pop();
+  return out;
+}
+
+async function loadVolatility() {
+  try {
+    for (const [tf, id] of [['15m', 'v-atr15'], ['1h', 'v-atr60'], ['4h', 'v-atr240']]) {
+      const r = await api(`/api/data?tf=${tf}&bars=120`);
+      const real = realBars(r.data || []);
+      const a = atrOf(real.slice(-15));
+      $(id).textContent = (a && a > 0) ? '$' + a.toFixed(2) : '—';
+      if (tf === '15m' && real.length) {
+        const b = real.slice(-96);
+        $('v-range15').textContent =
+          `${Math.min(...b.map(x => x.low)).toFixed(1)} – ${Math.max(...b.map(x => x.high)).toFixed(1)}`;
+      }
+    }
+  } catch (e) {}
+}
+
+async function loadFeedInfo() {
+  try {
+    const q = await api('/api/quote');
+    $('df-provider').textContent = q.provider;
+    $('df-age').textContent = q.age_seconds != null ? `${Math.round(q.age_seconds)}s ago` : 'live';
+    const c = await api('/api/data/coverage');
+    const rows = c.rows || c.coverage || [];
+    if (rows.length) {
+      const tot = rows.reduce((s, r) => s + (r.bars || r.count || 0), 0);
+      $('df-bars').textContent = tot ? tot.toLocaleString() : '—';
+    }
+  } catch (e) {}
+}
 setInterval(loadDayStats, 60000);
 
 /* ── time & sales tape ─────────────────────────────────── */
@@ -661,8 +731,12 @@ async function refreshAccount() {
     tf2.textContent = (fl >= 0 ? '+$' : '-$') + Math.abs(fl).toFixed(2);
     tf2.className = 'v ' + (fl >= 0 ? 'up' : 'down');
     $('ts-margin').textContent = '$' + Number(a.free_margin).toFixed(2);
-    $('d-count').textContent = a.open_positions_count;
     $('pos-badge').textContent = a.open_positions_count;
+    $('ac-mlevel').textContent = Number(a.margin_level).toFixed(0) + '%';
+    const ke = $('ac-kill');
+    ke.textContent = a.kill_switch_active ? 'ENGAGED' : 'normal';
+    ke.className = a.kill_switch_active ? 'down' : 'up';
+    $('ac-open').textContent = a.open_positions_count;
   } catch (e) {}
 }
 async function refreshPositions() {
@@ -715,8 +789,10 @@ async function closeAll() {
 
 /* ── charts (TradingView Lightweight Charts) ──────────── */
 let chartTf = '15m';
-const IND = {ema20: true, ema50: true, bb: false, vol: true, sma200: false};
-let TV = null, candleSeries = null, volSeries = null, indSeries = {};
+let chartType = 'candles';
+let logScale = false;
+const IND = {ema20: true, ema50: true, bb: false, vol: true, sma200: false, vwap: false, rsi: false};
+let TV = null, candleSeries = null, volSeries = null, indSeries = {}, mainSeries = null;
 let chartReady = false, chartData = [];
 
 document.querySelectorAll('#chart-tfs .tf').forEach(el => el.addEventListener('click', () => {
@@ -743,6 +819,11 @@ function initChart() {
     timeScale: {borderColor: '#1f2a38', timeVisible: true, secondsVisible: false},
     crosshair: {mode: LightweightCharts.CrosshairMode.Normal},
   });
+  try {
+    TV.createTextWatermark('XAUUSD', {
+      color: 'rgba(140,155,175,.07)', fontSize: 64, fontFamily: 'Menlo',
+    });
+  } catch (e) { /* watermark optional */ }
   candleSeries = TV.addCandlestickSeries({
     upColor: '#34c07c', downColor: '#e5544f', borderVisible: false,
     wickUpColor: '#34c07c', wickDownColor: '#e5544f',
@@ -750,6 +831,15 @@ function initChart() {
   volSeries = TV.addHistogramSeries({priceFormat: {type: 'volume'},
     priceScaleId: 'vol', lastValueVisible: false, priceLineVisible: false});
   TV.priceScale('vol').applyOptions({scaleMargins: {top: 0.82, bottom: 0}});
+  indSeries.vwap = TV.addLineSeries({color: '#e0b34d', lineWidth: 1.2,
+    lineStyle: LightweightCharts.LineStyle.Dashed,
+    lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+  indSeries.rsi = TV.addLineSeries({color: '#c98f4f', lineWidth: 1.2,
+    priceScaleId: 'rsi', lastValueVisible: false, priceLineVisible: false,
+    crosshairMarkerVisible: false});
+  indSeries.rsi.createPriceLine({price: 70, color: 'rgba(229,84,79,.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
+  indSeries.rsi.createPriceLine({price: 30, color: 'rgba(52,192,124,.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
+  TV.priceScale('rsi').applyOptions({scaleMargins: {top: 0.78, bottom: 0.02}});
   for (const [key, color, width] of [
       ['ema20', '#d4a843', 1.4], ['ema50', '#4f8cff', 1.4],
       ['sma200', '#9b6dd6', 1.2],
@@ -762,7 +852,11 @@ function initChart() {
     if (!param || !param.time || !param.seriesData) { leg.innerHTML = ''; return; }
     const b = param.seriesData.get(candleSeries);
     if (!b) { leg.innerHTML = ''; return; }
+    const idx = chartData.findIndex(x => x.time === b.time);
+    const prevC = idx > 0 ? chartData[idx - 1] : null;
+    const chg = prevC ? ((b.close - prevC.close) / prevC.close * 100) : 0;
     leg.innerHTML = `O <b>${b.open.toFixed(2)}</b>&nbsp; H <b style="color:#34c07c">${b.high.toFixed(2)}</b>&nbsp; L <b style="color:#e5544f">${b.low.toFixed(2)}</b>&nbsp; C <b>${b.close.toFixed(2)}</b>` +
+      `&nbsp; <span class="${chg >= 0 ? 'up' : 'down'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>` +
       (b.volume !== undefined ? `&nbsp; V ${b.volume}` : '');
   });
   chartReady = true;
@@ -806,8 +900,98 @@ function applyIndicators() {
   } else {
     indSeries.bbU.setData([]); indSeries.bbL.setData([]);
   }
+  if (IND.vwap) {
+    let cumPV = 0, cumV = 0;
+    const vw = chartData.map(b => {
+      cumPV += (b.high + b.low + b.close) / 3 * (b.volume || 1);
+      cumV += (b.volume || 1);
+      return {time: b.time, value: cumPV / cumV};
+    });
+    indSeries.vwap.setData(vw);
+  } else indSeries.vwap.setData([]);
+  if (IND.rsi) {
+    const out = [];
+    let g = 0, l = 0;
+    for (let i = 1; i < closes.length; i++) {
+      const d = closes[i] - closes[i - 1];
+      if (i <= 14) { g += Math.max(d, 0) / 14; l += Math.max(-d, 0) / 14; }
+      else {
+        g = (g * 13 + Math.max(d, 0)) / 14;
+        l = (l * 13 + Math.max(-d, 0)) / 14;
+      }
+      if (i >= 14) out.push({time: chartData[i].time, value: l === 0 ? 100 : 100 - 100 / (1 + g / l)});
+    }
+    indSeries.rsi.setData(out);
+  } else indSeries.rsi.setData([]);
   volSeries.applyOptions({visible: IND.vol});
 }
+
+/* ── chart type / scale ────────────────────────────────── */
+function buildMainSeries() {
+  if (!chartReady) return;
+  if (mainSeries) TV.removeSeries(mainSeries);
+  if (chartType === 'candles') {
+    mainSeries = candleSeries = TV.addCandlestickSeries({
+      upColor: '#34c07c', downColor: '#e5544f', borderVisible: false,
+      wickUpColor: '#34c07c', wickDownColor: '#e5544f'});
+  } else if (chartType === 'line') {
+    mainSeries = candleSeries = TV.addLineSeries({color: '#d4a843', lineWidth: 2});
+  } else {
+    mainSeries = candleSeries = TV.addAreaSeries({
+      lineColor: '#d4a843', topColor: 'rgba(212,168,67,.28)', bottomColor: 'rgba(212,168,67,0)', lineWidth: 2});
+  }
+  mainSeries.applyOptions({lastValueVisible: true, priceLineVisible: true});
+  mainSeries.setData(chartData.map(b => chartType === 'candles'
+    ? b : {time: b.time, value: b.close}));
+  drawMarkers();
+}
+
+function setChartType(t, btn) {
+  chartType = t;
+  document.querySelectorAll('.ctype').forEach(x => x.classList.remove('active'));
+  btn.classList.add('active');
+  buildMainSeries();
+}
+
+function toggleLog(btn) {
+  logScale = !logScale;
+  btn.classList.toggle('active', logScale);
+  TV.priceScale('right').applyOptions({mode: logScale ? LightweightCharts.PriceScaleMode.Logarithmic : LightweightCharts.PriceScaleMode.Normal});
+}
+
+/* ── position markers on the chart ─────────────────────── */
+let posMarkers = [];
+function drawMarkers() {
+  if (!chartReady || !mainSeries) return;
+  mainSeries.setMarkers(posMarkers);
+}
+async function loadMarkers() {
+  try {
+    const r = await api('/api/trade/positions');
+    const times = chartData.map(b => b.time);
+    posMarkers = (r.positions || []).map(pos => {
+      const openS = Math.floor(new Date(pos.opened_at || Date.now()).getTime() / 1000);
+      const t = times.filter(x => x <= openS).pop() || times[0];
+      const buy = pos.side === 'BUY';
+      return {time: t, position: buy ? 'belowBar' : 'aboveBar',
+        color: buy ? '#34c07c' : '#e5544f',
+        shape: buy ? 'arrowUp' : 'arrowDown',
+        text: `${buy ? 'B' : 'S'} ${Number(pos.volume).toFixed(2)}`};
+    });
+    drawMarkers();
+  } catch (e) {}
+}
+
+/* ── bar-close countdown ───────────────────────────────── */
+const TF_SEC = {'1m': 60, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400};
+setInterval(() => {
+  const el = document.getElementById('bar-countdown');
+  if (!el || !chartData.length || !TF_SEC[chartTf]) return;
+  const lastT = chartData[chartData.length - 1].time;
+  const left = Math.max(0, lastT + TF_SEC[chartTf] - Math.floor(Date.now() / 1000));
+  const m = Math.floor(left / 60), s = left % 60;
+  el.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}, 1000);
 
 async function loadMainChart() {
   initChart();
@@ -816,10 +1000,11 @@ async function loadMainChart() {
     chartData = (r.data || []).map(b => ({time: b.time, open: b.open, high: b.high,
       low: b.low, close: b.close, volume: b.volume}));
     if (chartReady) {
-      candleSeries.setData(chartData);
+      buildMainSeries();
       volSeries.setData(chartData.map(b => ({time: b.time, value: b.volume,
         color: b.close >= b.open ? 'rgba(52,192,124,.35)' : 'rgba(229,84,79,.35)'})));
       applyIndicators();
+      loadMarkers();
       TV.timeScale().fitContent();
     } else {
       document.getElementById('chart-note').textContent =
