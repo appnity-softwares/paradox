@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paradox — Trading Terminal</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0e14;
+    --surface: #10161f;
+    --surface-2: #151d29;
+    --border: #1f2a38;
+    --text: #e6edf5;
+    --text-dim: #8a97a8;
+    --text-faint: #5c6a7d;
+    --accent: #d4a843;
+    --accent-soft: rgba(212,168,67,.12);
+    --green: #34c07c;
+    --red: #e5544f;
+    --amber: #d99a3d;
+    --blue: #4f8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    background: var(--bg); color: var(--text);
+    margin: 0; font-size: 14px; line-height: 1.5;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  header {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; height: 60px;
+    background: rgba(10,14,20,.94); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand-mark { color: var(--accent); font-size: 20px; }
+  .brand-name { font-weight: 750; font-size: 17px; letter-spacing: .06em; }
+  .brand-sub { color: var(--text-faint); font-size: 12px; }
+  .hdr-right { display: flex; align-items: center; gap: 16px; }
+  .hdr-quote { display: flex; align-items: baseline; gap: 10px; }
+  .hdr-link { color: var(--text-dim); font-size: 12.5px; text-decoration: none; }
+  .badge {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+    padding: 4px 10px; border-radius: 999px; text-transform: uppercase;
+  }
+  .badge.gold { background: var(--accent-soft); color: var(--accent); }
+  .badge.green { background: rgba(52,192,124,.15); color: var(--green); }
+  .badge.red { background: rgba(229,84,79,.15); color: var(--red); }
+  .badge.grey { background: rgba(138,151,168,.15); color: var(--text-dim); }
+  .badge.amber { background: rgba(217,154,61,.15); color: var(--amber); }
+  nav.tabs { display: flex; gap: 2px; padding: 0 24px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .tab {
+    padding: 12px 16px; color: var(--text-dim); cursor: pointer; white-space: nowrap;
+    font-size: 13.5px; font-weight: 550; border-bottom: 2px solid transparent; user-select: none;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  main { max-width: 1220px; margin: 0 auto; padding: 24px 24px 70px; }
+  section[hidden] { display: none; }
+  .page-title { font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+  .page-sub { color: var(--text-dim); font-size: 13px; margin: 0 0 20px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h3 { margin: 0 0 14px; font-size: 12.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim); }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .muted { color: var(--text-faint); font-size: 12.5px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+  .stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .stat .k { font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 5px; }
+  .stat .v { font-size: 20px; font-weight: 700; }
+  label { display: block; font-size: 11.5px; color: var(--text-dim); margin-bottom: 4px; }
+  input, select, textarea {
+    width: 100%; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 13.5px; outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .btn {
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 16px; font-size: 13.5px; cursor: pointer; font-weight: 550;
+  }
+  .btn:hover { border-color: var(--text-faint); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #14100a; font-weight: 650; }
+  .btn.danger { background: rgba(229,84,79,.12); border-color: rgba(229,84,79,.5); color: var(--red); }
+  .btn.buy { background: rgba(52,192,124,.15); border-color: rgba(52,192,124,.5); color: var(--green); font-weight: 650; }
+  .btn.sell { background: rgba(229,84,79,.12); border-color: rgba(229,84,79,.5); color: var(--red); font-weight: 650; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.wide { width: 100%; }
+  .out {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    color: var(--text-dim); background: var(--surface-2);
+    border-radius: 8px; padding: 10px 12px; margin-top: 12px;
+    white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow-y: auto;
+  }
+  .out:empty { display: none; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); padding: 6px 8px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  td { padding: 7px 8px; border-bottom: 1px solid #182130; }
+  tr:last-child td { border-bottom: none; }
+  .up { color: var(--green); } .down { color: var(--red); }
+  .scroll { max-height: 320px; overflow-y: auto; }
+  svg { display: block; }
+  .tf-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tf {
+    padding: 5px 12px; border-radius: 7px; font-size: 12.5px; font-weight: 600;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim); cursor: pointer; user-select: none;
+  }
+  .tf:hover { color: var(--text); }
+  .tf.active { background: var(--accent-soft); border-color: rgba(212,168,67,.4); color: var(--accent); }
+  .chat-box { max-height: 380px; overflow-y: auto; margin-bottom: 12px; }
+  .chat-bubble { padding: 10px 14px; border-radius: 12px; margin-bottom: 10px; font-size: 13.5px; max-width: 85%; }
+  .chat-bubble.me { background: var(--accent-soft); margin-left: auto; color: var(--text); }
+  .chat-bubble.ai { background: var(--surface-2); border: 1px solid var(--border); }
+  .agent-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot.idle { background: var(--text-faint); }
+  .dot.active { background: var(--green); }
+  .dot.error { background: var(--red); }
+  #login-overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(6,9,13,.82); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #login-overlay[hidden] { display: none; }
+  .login-card { width: 340px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; }
+  .login-title { font-size: 18px; font-weight: 650; margin-bottom: 2px; }
+  .login-sub { color: var(--text-faint); font-size: 12.5px; margin-bottom: 20px; }
+  .login-card label { margin-bottom: 14px; }
+  .form-error { color: var(--red); font-size: 12px; margin-top: 10px; min-height: 15px; }
+  @media (max-width: 720px) { main { padding: 16px 12px 50px; } header { padding: 0 12px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="brand-mark">◇</span>
+    <span class="brand-name">PARADOX</span>
+    <span class="brand-sub">Trading Terminal</span>
+  </div>
+  <div class="hdr-right">
+    <div class="hdr-quote">
+      <span class="muted">XAU/USD</span>
+      <span class="mono" id="hdr-price" style="font-size:17px;font-weight:700">—</span>
+      <span class="mono" id="hdr-chg" style="font-size:12px">—</span>
+    </div>
+    <span class="badge grey" id="hdr-provider">—</span>
+    <a class="hdr-link" href="/console">Console</a>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <div class="tab active" data-tab="trade">Trade</div>
+  <div class="tab" data-tab="charts">Charts</div>
+  <div class="tab" data-tab="strategy">Strategy</div>
+  <div class="tab" data-tab="propfirm">Prop Firm</div>
+  <div class="tab" data-tab="copilot">Copilot</div>
+  <div class="tab" data-tab="agents">Agents</div>
+  <div class="tab" data-tab="metrics">Data &amp; Metrics</div>
+  <div class="tab" data-tab="mt5">MT5</div>
+</nav>
+
+<main>
+  <section id="tab-trade">
+    <h1 class="page-title">Trade Desk</h1>
+    <p class="page-sub">Account state, order ticket and open positions.</p>
+
+    <div class="stats" style="margin-bottom:16px" id="acct-stats">
+      <div class="stat"><div class="k">Balance</div><div class="v mono" id="d-balance">—</div></div>
+      <div class="stat"><div class="k">Equity</div><div class="v mono" id="d-equity">—</div></div>
+      <div class="stat"><div class="k">Floating PnL</div><div class="v mono" id="d-float">—</div></div>
+      <div class="stat"><div class="k">Free margin</div><div class="v mono" id="d-margin">—</div></div>
+      <div class="stat"><div class="k">Open positions</div><div class="v mono" id="d-count">—</div></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Order ticket · XAUUSD</h3>
+        <div class="fields">
+          <div><label>Volume (lots)</label>
+            <select id="od-vol">
+              <option>0.01</option><option>0.05</option><option selected>0.10</option>
+              <option>0.25</option><option>0.50</option><option>1.00</option>
+            </select></div>
+          <div><label>SL distance ($)</label><input id="od-sl" value="5.0"></div>
+          <div><label>TP distance ($)</label><input id="od-tp" value="10.0"></div>
+        </div>
+        <div class="tf-row" style="margin-bottom:12px">
+          <button class="btn sell" style="flex:1" onclick="sendOrder('SELL')">SELL MARKET</button>
+          <button class="btn buy" style="flex:1" onclick="sendOrder('BUY')">BUY MARKET</button>
+        </div>
+        <div class="muted" id="od-feedback"></div>
+      </div>
+
+      <div class="card">
+        <h3>Open positions</h3>
+        <div class="scroll"><table id="pos-table"></table></div>
+        <div style="margin-top:12px"><button class="btn danger" onclick="closeAll()">Close all positions</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-charts" hidden>
+    <h1 class="page-title">Charts</h1>
+    <p class="page-sub">Real recorded bars from the tick store. Delayed by definition — never presented as live.</p>
+    <div class="card">
+      <div class="tf-row" id="chart-tfs" style="margin-bottom:12px">
+        <div class="tf" data-tf="1m">1m</div>
+        <div class="tf" data-tf="5m">5m</div>
+        <div class="tf active" data-tf="15m">15m</div>
+        <div class="tf" data-tf="30m">30m</div>
+        <div class="tf" data-tf="1h">1h</div>
+        <div class="tf" data-tf="4h">4h</div>
+        <div class="tf" data-tf="1d">1D</div>
+      </div>
+      <div class="mono muted" id="ohlc-readout" style="margin-bottom:10px">—</div>
+      <svg id="main-chart" width="100%" height="400" viewBox="0 0 1100 400" preserveAspectRatio="none"></svg>
+    </div>
+  </section>
+
+  <section id="tab-strategy" hidden>
+    <h1 class="page-title">Strategy Lab</h1>
+    <p class="page-sub">Run a deterministic backtest on real data. Same engine, same fills, every time.</p>
+    <div class="card">
+      <h3>Backtest setup</h3>
+      <div class="fields">
+        <div><label>Strategy</label>
+          <select id="bt-strategy" onchange="renderParams()">
+            <option value="ema_cross">EMA cross</option>
+            <option value="macd_cross">MACD cross</option>
+            <option value="rsi_reversal">RSI reversal</option>
+            <option value="bollinger">Bollinger</option>
+            <option value="vwap_ema">VWAP + EMA</option>
+            <option value="supertrend">SuperTrend</option>
+            <option value="session_breakout">Session breakout</option>
+            <option value="smc_fvg">SMC fair value gap</option>
+            <option value="smc_order_block">SMC order block</option>
+            <option value="smc_liquidity_sweep">SMC liquidity sweep</option>
+          </select></div>
+        <div><label>Timeframe</label>
+          <select id="bt-tf"><option>15m</option><option>5m</option><option>30m</option><option>1h</option></select></div>
+        <div><label>Risk % / trade</label><input id="bt-risk" value="1.0"></div>
+        <div><label>R : R</label><input id="bt-rr" value="2.0"></div>
+        <div><label>SL method</label>
+          <select id="bt-slmethod"><option value="atr">ATR</option><option value="fixed">Fixed points</option></select></div>
+        <div><label>SL × ATR</label><input id="bt-slmult" value="1.5"></div>
+        <div><label>SL fixed pts</label><input id="bt-slfixed" value="5.0"></div>
+        <div><label>Session</label>
+          <select id="bt-session">
+            <option value="london_ny">London + NY</option>
+            <option value="london">London</option>
+            <option value="ny">New York</option>
+            <option value="asia">Asia</option>
+            <option value="all">All day</option>
+          </select></div>
+        <div><label>Max trades / day</label><input id="bt-maxtrades" value="4"></div>
+        <div><label>Daily loss limit %</label><input id="bt-maxloss" value="3.0"></div>
+      </div>
+      <div id="bt-params" class="fields"></div>
+      <button class="btn primary" onclick="runBacktest()">Run backtest</button>
+      <span class="muted" id="bt-status" style="margin-left:12px"></span>
+    </div>
+    <div class="card" id="bt-results" hidden>
+      <h3>Results</h3>
+      <div class="stats" id="bt-metric-cards"></div>
+      <div class="out" id="bt-extra"></div>
+    </div>
+  </section>
+
+  <section id="tab-propfirm" hidden>
+    <h1 class="page-title">Prop Firm Simulator</h1>
+    <p class="page-sub">Monte-Carlo your strategy against real firm rules before you risk a challenge fee.</p>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Setup</h3>
+        <div class="fields">
+          <div style="grid-column:1/-1"><label>Firm profile</label><select id="pf-profile"></select></div>
+          <div><label>Strategy</label><select id="pf-strategy"></select></div>
+          <div><label>Simulations</label><input id="pf-sims" value="1000"></div>
+          <div><label>Risk % / trade</label><input id="pf-risk" value="1.0"></div>
+        </div>
+        <button class="btn primary" onclick="runPfSim()">Run simulation</button>
+        <span class="muted" id="pf-status" style="margin-left:12px"></span>
+      </div>
+      <div class="card">
+        <h3>Profile rules</h3>
+        <div id="pf-rules" class="muted">Select a profile.</div>
+      </div>
+    </div>
+    <div class="card" id="pf-results" hidden>
+      <h3>Simulation verdict</h3>
+      <div class="stats" id="pf-stats"></div>
+      <div class="out" id="pf-extra"></div>
+    </div>
+  </section>
+
+  <section id="tab-copilot" hidden>
+    <h1 class="page-title">Copilot</h1>
+    <p class="page-sub">Market and strategy assistant. Answers from your platform's own data.</p>
+    <div class="card">
+      <div class="chat-box" id="chat-box"></div>
+      <div class="tf-row">
+        <input id="chat-input" placeholder="Ask about the market, your positions or a strategy…" style="flex:1"
+               onkeydown="if(event.key==='Enter')sendChat()">
+        <button class="btn primary" onclick="sendChat()">Ask</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-agents" hidden>
+    <h1 class="page-title">Agents</h1>
+    <p class="page-sub">Platform subsystems and their live status. Idle means no work queued — not an error.</p>
+    <div class="grid-3" id="agents-grid"></div>
+    <div class="card" style="margin-top:16px">
+      <h3>Recent activity</h3>
+      <div class="out" id="agents-activity">No activity yet.</div>
+    </div>
+  </section>
+
+  <section id="tab-metrics" hidden>
+    <h1 class="page-title">Data &amp; Metrics</h1>
+    <p class="page-sub">What the platform actually has on disk. No invented numbers.</p>
+    <div class="card">
+      <h3>Tick store</h3>
+      <div class="stats" id="vertex-stats"></div>
+      <div class="muted" id="vertex-format" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <h3>Ingested coverage — XAUUSD</h3>
+      <div class="scroll"><table id="coverage-table"></table></div>
+    </div>
+  </section>
+
+  <section id="tab-mt5" hidden>
+    <h1 class="page-title">MT5 &amp; Data Providers</h1>
+    <p class="page-sub">What is actually connected right now, stated plainly.</p>
+    <div class="grid-2" id="mt5-providers"></div>
+  </section>
+</main>
+
+<div id="login-overlay" hidden>
+  <div class="login-card">
+    <div class="login-title">Sign in</div>
+    <div class="login-sub">Terminal access</div>
+    <label>User<input id="l-user" value="admin" autocomplete="username"></label>
+    <label>Password<input id="l-pass" type="password" autocomplete="current-password"></label>
+    <label>TOTP <span class="muted">(only if MFA is enabled)</span><input id="l-totp" placeholder="6-digit code" inputmode="numeric"></label>
+    <button class="btn primary wide" onclick="doLogin()">Sign in</button>
+    <div id="l-err" class="form-error"></div>
+  </div>
+</div>
+
+<script>
+/* ── core ──────────────────────────────────────────────── */
+let TOKEN = sessionStorage.getItem('dsh_token') || '';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, m =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+async function api(url, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({'Authorization': 'Bearer ' + TOKEN}, opts.headers || {});
+  const r = await fetch(url, opts);
+  if (r.status === 401) showLogin('Session expired — sign in again.');
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+  return r.json();
+}
+function showLogin(msg) {
+  $('login-overlay').hidden = false;
+  $('l-err').textContent = msg || '';
+}
+async function doLogin() {
+  const r = await fetch('/api/platform/auth/login', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username: $('l-user').value, password: $('l-pass').value,
+                          totp: $('l-totp').value || null})});
+  if (!r.ok) { showLogin('Login failed — check the password.'); return; }
+  TOKEN = (await r.json()).token;
+  sessionStorage.setItem('dsh_token', TOKEN);
+  $('login-overlay').hidden = true;
+}
+
+/* ── tabs ──────────────────────────────────────────────── */
+const loaders = {
+  trade: () => { refreshAccount(); refreshPositions(); },
+  charts: () => loadMainChart(),
+  strategy: () => {},
+  propfirm: () => initPropFirm(),
+  copilot: () => {},
+  agents: () => loadAgents(),
+  metrics: () => { loadVertex(); loadCoverage(); },
+  mt5: () => loadMt5(),
+};
+document.querySelectorAll('#tabs .tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('#tabs .tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.querySelectorAll('main > section').forEach(s => s.hidden = true);
+  $('tab-' + t.dataset.tab).hidden = false;
+  loaders[t.dataset.tab]?.();
+}));
+
+/* ── header quote ──────────────────────────────────────── */
+let lastQuote = null;
+async function pollQuote() {
+  try {
+    const q = await api('/api/quote');
+    const prev = lastQuote?.price;
+    lastQuote = q;
+    $('hdr-price').textContent = Number(q.price).toFixed(2);
+    if (prev !== undefined) {
+      const d = q.price - prev;
+      const el = $('hdr-chg');
+      el.textContent = (d >= 0 ? '▲ +' : '▼ ') + d.toFixed(2);
+      el.className = 'mono ' + (d >= 0 ? 'up' : 'down');
+    }
+    const b = $('hdr-provider');
+    b.textContent = q.provider + (q.delayed ? ' · DELAYED' : q.stale ? ' · STALE' : '');
+    b.className = 'badge ' + (q.delayed ? 'amber' : q.stale ? 'red' : 'green');
+  } catch (e) { /* quote feed may be down; header stays dash */ }
+}
+setInterval(pollQuote, 5000);
+
+/* ── trade desk ────────────────────────────────────────── */
+async function refreshAccount() {
+  try {
+    const a = await api('/api/trade/account');
+    $('d-balance').textContent = '$' + Number(a.balance).toFixed(2);
+    $('d-equity').textContent = '$' + Number(a.equity).toFixed(2);
+    const f = Number(a.floating_pnl || 0);
+    const fe = $('d-float');
+    fe.textContent = (f >= 0 ? '+$' : '-$') + Math.abs(f).toFixed(2);
+    fe.className = 'v mono ' + (f >= 0 ? 'up' : 'down');
+    $('d-margin').textContent = '$' + Number(a.free_margin).toFixed(2);
+    $('d-count').textContent = a.open_positions_count;
+  } catch (e) {}
+}
+async function refreshPositions() {
+  try {
+    const r = await api('/api/trade/positions');
+    const ps = r.positions || [];
+    $('pos-table').innerHTML = ps.length
+      ? `<tr><th>Ticket</th><th>Side</th><th>Lots</th><th>Open</th><th>PnL</th><th></th></tr>` +
+        ps.map(p => {
+          const pnl = Number(p.profit || 0);
+          return `<tr><td class="mono">${esc(p.ticket)}</td>
+            <td><span class="badge ${p.side === 'BUY' ? 'green' : 'red'}">${esc(p.side)}</span></td>
+            <td class="mono">${Number(p.volume).toFixed(2)}</td>
+            <td class="mono">${Number(p.open_price ?? p.open ?? 0).toFixed(2)}</td>
+            <td class="mono ${pnl >= 0 ? 'up' : 'down'}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</td>
+            <td><button class="btn" style="padding:3px 10px;font-size:12px" onclick="closePos(${esc(p.ticket)})">Close</button></td></tr>`;
+        }).join('')
+      : '<tr><td class="muted" style="padding:14px">No open positions.</td></tr>';
+  } catch (e) {}
+}
+async function sendOrder(side) {
+  const fb = $('od-feedback');
+  fb.innerHTML = `<span style="color:var(--accent)">Sending ${side} ${$('od-vol').value} lot order…</span>`;
+  try {
+    const res = await api('/api/trade/order', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({symbol: 'XAUUSD', side, volume: parseFloat($('od-vol').value),
+        sl: parseFloat($('od-sl').value), tp: parseFloat($('od-tp').value),
+        mode: 'paper', comment: 'Terminal-' + side})});
+    fb.innerHTML = res.success
+      ? `<span class="up">✓ ${side} filled @ $${Number(res.filled_price).toFixed(2)} (ticket #${res.order_id})</span>`
+      : `<span class="down">✗ ${esc(res.error || res.detail || 'order rejected')}</span>`;
+    refreshAccount(); refreshPositions();
+  } catch (e) { fb.innerHTML = `<span class="down">✗ ${esc(e.message)}</span>`; }
+}
+async function closePos(ticket) {
+  try {
+    await api('/api/trade/close', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ticket: parseInt(ticket), reason: 'Manual close from terminal'})});
+    refreshAccount(); refreshPositions();
+  } catch (e) { alert('Close failed: ' + e.message); }
+}
+async function closeAll() {
+  try {
+    await api('/api/trade/close_all', {method: 'POST'});
+    refreshAccount(); refreshPositions();
+  } catch (e) { alert('Close-all failed: ' + e.message); }
+}
+
+/* ── charts ────────────────────────────────────────────── */
+let chartTf = '15m';
+document.querySelectorAll('#chart-tfs .tf').forEach(el => el.addEventListener('click', () => {
+  document.querySelectorAll('#chart-tfs .tf').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+  chartTf = el.dataset.tf;
+  loadMainChart();
+}));
+async function loadMainChart() {
+  try {
+    const r = await api('/api/data?tf=' + chartTf + '&bars=5000');
+    const bars = (r.data || []).map(b => ({t: b.time, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume}));
+    drawCandles($('main-chart'), bars, 400);
+    const last = bars[bars.length - 1];
+    if (last) $('ohlc-readout').textContent =
+      `O ${last.o.toFixed(2)}  H ${last.h.toFixed(2)}  L ${last.l.toFixed(2)}  C ${last.c.toFixed(2)}  ·  ${bars.length} bars · ${chartTf}`;
+  } catch (e) { $('ohlc-readout').textContent = 'Chart data unavailable: ' + e.message; }
+}
+function drawCandles(svg, bars, H) {
+  const W = 1100, padL = 8, padR = 64, padT = 14, padB = 22;
+  if (!bars.length) { svg.innerHTML = ''; return; }
+  const lo = Math.min(...bars.map(b => b.l)), hi = Math.max(...bars.map(b => b.h));
+  const pad = (hi - lo) * 0.06 || 1;
+  const ylo = lo - pad, yhi = hi + pad;
+  const y = p => padT + (yhi - p) / (yhi - ylo) * (H - padT - padB);
+  const iw = W - padL - padR, bw = Math.max(1.2, iw / bars.length - 1);
+  let s = '';
+  for (let g = 0; g <= 5; g++) {
+    const pv = ylo + (yhi - ylo) * g / 5, py = y(pv);
+    s += `<line x1="${padL}" y1="${py}" x2="${W - padR}" y2="${py}" stroke="#182130"/>` +
+         `<text x="${W - padR + 8}" y="${py + 4}" fill="#5c6a7d" font-size="11" font-family="monospace">${pv.toFixed(1)}</text>`;
+  }
+  bars.forEach((b, i) => {
+    const x = padL + i * (iw / bars.length) + 1, up = b.c >= b.o;
+    const col = up ? '#34c07c' : '#e5544f';
+    s += `<line x1="${x + bw / 2}" y1="${y(b.h)}" x2="${x + bw / 2}" y2="${y(b.l)}" stroke="${col}" stroke-width="1"/>` +
+         `<rect x="${x}" y="${Math.min(y(b.o), y(b.c))}" width="${bw}" height="${Math.max(1, Math.abs(y(b.c) - y(b.o)))}" fill="${col}"/>`;
+  });
+  const lastP = bars[bars.length - 1].c;
+  s += `<line x1="${padL}" y1="${y(lastP)}" x2="${W - padR}" y2="${y(lastP)}" stroke="#d4a843" stroke-dasharray="4,3" opacity=".7"/>` +
+       `<rect x="${W - padR + 2}" y="${y(lastP) - 9}" width="58" height="18" rx="4" fill="#d4a843"/>` +
+       `<text x="${W - padR + 8}" y="${y(lastP) + 4}" fill="#14100a" font-size="11" font-weight="700" font-family="monospace">${lastP.toFixed(1)}</text>`;
+  svg.innerHTML = s;
+}
+
+/* ── strategy lab ──────────────────────────────────────── */
+const DEF_PARAMS = {
+  ema_cross: {fast: 20, slow: 50}, macd_cross: {fast: 12, slow: 26, signal: 9},
+  rsi_reversal: {length: 14, oversold: 30, overbought: 70}, bollinger: {length: 20, num_std: 2},
+  vwap_ema: {ema_len: 20, band_mult: 1.5}, supertrend: {atr_len: 10, mult: 3.0},
+  session_breakout: {lookback_bars: 16, buffer_pts: 1.0},
+  smc_fvg: {min_gap_atr: 0.4, max_age: 25},
+  smc_order_block: {swing_len: 5, impulse_mult: 1.5},
+  smc_liquidity_sweep: {lookback: 20, sweep_buffer: 0.2},
+};
+const STRAT_LABELS = {
+  ema_cross: 'EMA cross', macd_cross: 'MACD cross', rsi_reversal: 'RSI reversal',
+  bollinger: 'Bollinger', vwap_ema: 'VWAP + EMA', supertrend: 'SuperTrend',
+  session_breakout: 'Session breakout', smc_fvg: 'SMC fair value gap',
+  smc_order_block: 'SMC order block', smc_liquidity_sweep: 'SMC liquidity sweep',
+};
+function renderParams() {
+  const def = DEF_PARAMS[$('bt-strategy').value] || {};
+  $('bt-params').innerHTML = Object.entries(def).map(([k, v]) =>
+    `<div><label>${esc(k)}</label><input id="p_${k}" value="${v}"></div>`).join('');
+}
+renderParams();
+async function runBacktest() {
+  const s = $('bt-strategy').value;
+  const params = {};
+  for (const k of Object.keys(DEF_PARAMS[s] || {})) {
+    const el = $('p_' + k);
+    if (el) params[k] = isNaN(Number(el.value)) ? el.value : Number(el.value);
+  }
+  $('bt-status').textContent = 'Running…';
+  try {
+    const r = await api('/api/backtest', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({strategy: s, params, timeframe: $('bt-tf').value,
+        risk_pct: parseFloat($('bt-risk').value) || 1.0,
+        rr_ratio: parseFloat($('bt-rr').value) || 2.0,
+        sl_method: $('bt-slmethod').value,
+        sl_mult: parseFloat($('bt-slmult').value) || 1.5,
+        sl_fixed_pts: parseFloat($('bt-slfixed').value) || 5.0,
+        session: $('bt-session').value,
+        max_trades_per_day: parseInt($('bt-maxtrades').value) || 4,
+        daily_loss_limit_pct: parseFloat($('bt-maxloss').value) || 3.0})});
+    $('bt-status').textContent = '✓ Done';
+    const m = r.metrics || {};
+    const cols = ['Total Return %', 'Win Rate %', 'Profit Factor', 'Sharpe Ratio',
+                  'Max Drawdown %', 'Total Trades'];
+    $('bt-metric-cards').innerHTML = cols.map(c =>
+      `<div class="stat"><div class="k">${esc(c)}</div><div class="v mono">${
+        typeof m[c] === 'number' ? m[c].toFixed(2) : esc(m[c] ?? '—')}</div></div>`).join('');
+    const extra = Object.entries(m).filter(([k]) => !cols.includes(k))
+      .map(([k, v]) => `${k}: ${typeof v === 'number' ? v.toFixed(3) : v}`).join('\n');
+    $('bt-extra').textContent = extra;
+    $('bt-results').hidden = false;
+  } catch (e) { $('bt-status').textContent = '⚠ ' + e.message; }
+}
+
+/* ── prop firm ─────────────────────────────────────────── */
+let PF_PROFILES = [];
+async function initPropFirm() {
+  if (PF_PROFILES.length) return;
+  try {
+    const r = await api('/api/prop_firm/profiles');
+    PF_PROFILES = r.profiles || [];
+    $('pf-profile').innerHTML = PF_PROFILES.map(p =>
+      `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    $('pf-strategy').innerHTML = Object.keys(STRAT_LABELS).map(k =>
+      `<option value="${k}">${STRAT_LABELS[k]}</option>`).join('');
+    $('pf-profile').addEventListener('change', renderPfRules);
+    renderPfRules();
+  } catch (e) { $('pf-rules').textContent = 'Could not load profiles: ' + e.message; }
+}
+function renderPfRules() {
+  const p = PF_PROFILES.find(x => x.id === $('pf-profile').value);
+  if (!p) return;
+  const tgt = p.initial_balance * p.profit_target_pct / 100;
+  const dl = p.initial_balance * p.max_daily_loss_pct / 100;
+  const ml = p.initial_balance * p.max_total_loss_pct / 100;
+  $('pf-rules').innerHTML =
+    `<table><tr><th>Rule</th><th>Value</th></tr>
+     <tr><td>Profit target</td><td class="mono">${p.profit_target_pct}% ($${tgt.toLocaleString()})</td></tr>
+     <tr><td>Max daily loss</td><td class="mono">${p.max_daily_loss_pct}% ($${dl.toLocaleString()})</td></tr>
+     <tr><td>Max total loss</td><td class="mono">${p.max_total_loss_pct}% ($${ml.toLocaleString()})</td></tr>
+     <tr><td>Min trading days</td><td class="mono">${p.min_trading_days}</td></tr>
+     <tr><td>Leverage</td><td class="mono">${esc(p.leverage || '1:100')}</td></tr>
+     <tr><td>News trading</td><td>${p.news_trading_allowed ? 'allowed' : 'blocked'}</td></tr>
+     <tr><td>Weekend holding</td><td>${p.weekend_holding_allowed ? 'allowed' : 'blocked'}</td></tr></table>`;
+}
+async function runPfSim() {
+  $('pf-status').textContent = 'Running Monte-Carlo resamples…';
+  try {
+    const r = await api('/api/prop_firm/simulate', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({profile_id: $('pf-profile').value,
+        strategy: $('pf-strategy').value,
+        num_simulations: parseInt($('pf-sims').value) || 1000,
+        risk_pct: parseFloat($('pf-risk').value) || 1.0,
+        timeframe: '15m'})});
+    $('pf-status').textContent = '✓ Done';
+    const cards = [
+      ['Verdict', r.status || r.grade || '—'],
+      ['Pass rate', (r.pass_rate_pct ?? '—') + '%'],
+      ['Avg trades to pass', '~' + (r.avg_trades_to_pass ?? '—')],
+      ['Daily breach rate', (r.daily_breach_rate_pct ?? '—') + '%'],
+    ];
+    $('pf-stats').innerHTML = cards.map(([k, v]) =>
+      `<div class="stat"><div class="k">${k}</div><div class="v mono">${esc(v)}</div></div>`).join('');
+    const extra = Object.entries(r).filter(([k]) =>
+      !['status', 'grade', 'pass_rate_pct', 'avg_trades_to_pass', 'daily_breach_rate_pct'].includes(k))
+      .map(([k, v]) => `${k}: ${typeof v === 'number' ? v.toFixed(3) : JSON.stringify(v)}`).join('\n');
+    $('pf-extra').textContent = extra;
+    $('pf-results').hidden = false;
+  } catch (e) { $('pf-status').textContent = '⚠ ' + e.message; }
+}
+
+/* ── copilot ───────────────────────────────────────────── */
+async function sendChat() {
+  const msg = $('chat-input').value.trim();
+  if (!msg) return;
+  $('chat-input').value = '';
+  $('chat-box').innerHTML += `<div class="chat-bubble me">${esc(msg)}</div>`;
+  $('chat-box').scrollTop = $('chat-box').scrollHeight;
+  try {
+    const r = await api('/api/ai/chat', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: msg,
+        context: {strategy: $('bt-strategy').value, timeframe: chartTf,
+                  lastPrice: lastQuote?.price ?? null}})});
+    const html = esc(r.reply || JSON.stringify(r))
+      .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+      .replace(/\*(.*?)\*/g, '<i>$1</i>')
+      .replace(/\n\n/g, '<br><br>').replace(/\n- /g, '<br>• ');
+    $('chat-box').innerHTML += `<div class="chat-bubble ai">${html}</div>`;
+  } catch (e) {
+    $('chat-box').innerHTML += `<div class="chat-bubble ai"><span class="down">Error: ${esc(e.message)}</span></div>`;
+  }
+  $('chat-box').scrollTop = $('chat-box').scrollHeight;
+}
+
+/* ── agents ────────────────────────────────────────────── */
+async function loadAgents() {
+  try {
+    const st = await api('/api/agents/status');
+    $('agents-grid').innerHTML = Object.entries(st).map(([id, a]) =>
+      `<div class="agent-card">
+        <div style="font-weight:600;margin-bottom:6px"><span class="dot ${esc(a.status)}"></span>${esc(a.name)}</div>
+        <div class="muted">status: ${esc(a.status)} · handled: ${a.metrics?.messages_handled ?? 0} · errors: ${a.metrics?.errors ?? 0}</div>
+      </div>`).join('');
+    const act = await api('/api/agents/activity');
+    const items = Array.isArray(act) ? act : (act.activity || act.items || []);
+    $('agents-activity').textContent = items.length
+      ? items.slice(-20).map(x => typeof x === 'string' ? x : JSON.stringify(x)).join('\n')
+      : 'No activity yet.';
+  } catch (e) { $('agents-grid').innerHTML = `<div class="muted">Agent status unavailable: ${esc(e.message)}</div>`; }
+}
+
+/* ── data & metrics ────────────────────────────────────── */
+async function loadVertex() {
+  try {
+    const v = await api('/api/vertex/status');
+    const mb = x => (x / 1024).toFixed(1) + ' MB';
+    $('vertex-stats').innerHTML = [
+      ['Status', v.status], ['Ticks', Number(v.tick_count).toLocaleString()],
+      ['Parquet size', mb(v.parquet_size_kb)], ['Vectors', Number(v.vector_count).toLocaleString()],
+      ['Compression', v.compression_ratio],
+    ].map(([k, val]) => `<div class="stat"><div class="k">${k}</div><div class="v mono">${esc(val)}</div></div>`).join('');
+    $('vertex-format').textContent = `${v.time_range} · ${v.format}`;
+  } catch (e) { $('vertex-format').textContent = 'Tick store status unavailable: ' + e.message; }
+}
+async function loadCoverage() {
+  try {
+    const r = await api('/api/data/coverage');
+    const months = r.coverage?.months || [];
+    $('coverage-table').innerHTML =
+      `<tr><th>Partition</th><th>Ticks</th><th>Size</th></tr>` +
+      months.map(m => `<tr><td class="mono">${esc(m.partition)}</td>
+        <td class="mono">${Number(m.ticks).toLocaleString()}</td>
+        <td class="mono">${m.size_mb} MB</td></tr>`).join('');
+  } catch (e) { $('coverage-table').innerHTML = `<tr><td class="muted">Coverage unavailable: ${esc(e.message)}</td></tr>`; }
+}
+
+/* ── mt5 ───────────────────────────────────────────────── */
+async function loadMt5() {
+  try {
+    const s = await api('/api/mt5/status');
+    $('mt5-providers').innerHTML = (s.providers || []).map(p =>
+      `<div class="agent-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <b>${esc(p.name)}</b>
+          <span class="badge ${p.available ? (p.delayed ? 'amber' : 'green') : 'red'}">
+            ${p.available ? (p.delayed ? 'DELAYED' : 'CONNECTED') : 'OFFLINE'}</span>
+        </div>
+        <div class="muted">${esc(p.reason || '')}</div>
+        <div class="muted" style="margin-top:6px">
+          real data: ${p.real_data ? 'yes' : 'no'} · spot: ${p.spot ? 'yes' : 'no'} · execution: ${p.execution ? 'yes' : 'no'}</div>
+      </div>`).join('');
+  } catch (e) { $('mt5-providers').innerHTML = `<div class="muted">Provider status unavailable: ${esc(e.message)}</div>`; }
+}
+
+/* ── boot ──────────────────────────────────────────────── */
+(async () => {
+  const s = await fetch('/api/platform/auth/state').then(r => r.json()).catch(() => ({configured: true}));
+  pollQuote();
+  loaders.trade();
+})();
+setInterval(() => { refreshAccount(); refreshPositions(); }, 10000);
+</script>
+</body>
+</html>

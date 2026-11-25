@@ -49,9 +49,9 @@ app.include_router(charts_router.router)
 
 @app.get("/")
 def index():
-    """Default landing: the client-facing trading portal."""
+    """Default landing: the full trading terminal."""
     return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                     "client.html"))
+                                     "terminal.html"))
 
 
 @app.get("/console")
