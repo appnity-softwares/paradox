@@ -44,6 +44,27 @@ def _save_manifest(manifest: dict) -> None:
     MANIFEST.write_text(json.dumps(manifest, indent=2))
 
 
+def check_partition_sources(symbol: str, year: int, month: int) -> Dict[str, Any] | None:
+    """Research-store protection (U8): refuse to merge Dukascopy ticks
+    into a partition that already holds non-Dukascopy sources — the
+    dedup keep="last" merge would silently replace MT5 research ticks.
+    Returns a refusal record, or None when writing is safe."""
+    ppath = store.partition_path(symbol, year, month)
+    if not ppath.exists():
+        return None
+    existing_sources = set(pd.read_parquet(
+        ppath, columns=["source"])["source"].unique())
+    foreign = existing_sources - {"dukascopy"}
+    if foreign:
+        return {"status": "refused_existing_source",
+                "conflicting_sources": sorted(foreign),
+                "partition": str(ppath),
+                "error": "research store protection: partition holds "
+                         "non-Dukascopy data; refusing to merge (U8 "
+                         "no-overwrite rule)"}
+    return None
+
+
 def ingest_week(year: int, week: int, symbol: str = "XAUUSD") -> Dict[str, Any]:
     """Download, validate, and write one week of genuine Dukascopy ticks."""
     base_url = BASE_URL_MAP.get(year)
@@ -106,10 +127,17 @@ def ingest_week(year: int, week: int, symbol: str = "XAUUSD") -> Dict[str, Any]:
     # Run data quality report
     report = quality_report(norm_df)
 
-    # Partition by month
+    # Partition by month — with a research-store protection guard:
+    # a partition that already holds NON-Dukascopy sources (e.g. the
+    # MT5 research export) is NEVER merged (U8: do not overwrite the
+    # research data; keep="last" would silently replace MT5 ticks).
     dt_index = pd.to_datetime(norm_df["time_utc_ms"], unit="ms", utc=True)
     written_partitions = []
     for (y, m), group in norm_df.groupby([dt_index.dt.year, dt_index.dt.month]):
+        refusal = check_partition_sources(symbol, int(y), int(m))
+        if refusal is not None:
+            refusal["file"] = filename
+            return refusal
         out_path = store.write_partition(group, symbol, int(y), int(m))
         written_partitions.append(str(out_path.relative_to(store.TICK_ROOT)))
 
