@@ -141,6 +141,7 @@ class _Position:
     sl: float
     tp: float
     entry_fee: float          # commission charged at entry (per side convention)
+    initial_risk_usd: float = 0.0   # |entry - initial SL| * contract * lots
     swap_paid: float = 0.0
     high_water: float = 0.0   # best favourable price seen (trailing anchor)
     last_swap_day: int = 0    # UTC day number of the last swap charge
@@ -291,6 +292,7 @@ class TickEngine:
                 "entry_price": round(float(p.entry_price), spec.digits + 1),
                 "exit_price": round(float(exit_price), spec.digits + 1),
                 "volume": round(float(volume_closed), 4),
+                "initial_risk_usd": round(float(p.initial_risk_usd * share), 2),
                 "pnl": round(float(pnl), 2),
                 "entry_fee": round(float(p.entry_fee * share), 2),
                 "exit_fee": round(float(fee_exit), 2),
@@ -319,10 +321,15 @@ class TickEngine:
             nonlocal pos, balance
             fee = comm_side * volume
             balance -= fee
+            # U7 metrics: intended dollar risk of the position at open
+            # (initial SL distance; NOT moved by breakeven/trail later).
+            risk_usd = (abs(price - sl) if sl > 0
+                        else config.default_sl_distance) * contract * volume
             pos = _Position(
                 side=order_side, volume=volume, initial_volume=volume,
                 entry_price=price, entry_time_ms=ts, sl=sl, tp=tp,
-                entry_fee=fee, high_water=price,
+                entry_fee=fee, initial_risk_usd=risk_usd,
+                high_water=price,
                 last_swap_day=self._utc_day(ts),
             )
             fills.append(Fill(order_tag=tag, side=order_side, price=price,

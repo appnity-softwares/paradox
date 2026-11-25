@@ -93,3 +93,70 @@ indistinguishable from noise.
 
 **Recommendation: do not deploy anything from this campaign. The
 product's live-trading claim cannot be honestly made yet.**
+
+---
+
+# CORRECTION (2026-11-25, found during round 2)
+
+The R-multiple computation used a `sl` key that does not exist in the
+engine's trade records, so `initial_risk_usd` fell back to the FULL
+entry price — R multiples came out ~200x too small. This corrupted:
+
+- Monte Carlo DD estimates (mc95 reported ~0.04-0.05% — nonsense; the
+  mc95_dd gate passed trivially),
+- deflated-Sharpe inputs (skew/kurtosis of garbage R distributions),
+- NOT the equity-curve metrics (PF, max DD, win rate) — the round-1
+  verdict (every candidate fails the drawdown gates) is UNCHANGED.
+
+Fix: the engine now records `initial_risk_usd` per trade (intended
+risk at open, robust to breakeven/trail SL moves); run_trial uses it.
+Golden files unaffected (the golden writer snapshots a fixed key
+subset; config_hash unchanged). Round-2 numbers in this file use the
+fixed computation.
+
+---
+
+# ROUND 2 (2026-11-25) — RESULT: ALL CANDIDATES FAIL, holdout stays FROZEN
+
+Design: three NEW hypothesis classes (documented in
+docs/strategy_rules_u7.md BEFORE coding) + exit management
+(breakeven / trail / time-exit) searched jointly, targeting round-1's
+drawdown failure. Same frozen holdout, same gates, same derived risk
+(0.25%).
+
+Trial accounting (honest):
+- round 1: 540 trials + 45 library baselines
+- round 2 run 1: 440 trials (metrics-correction bug found afterwards)
+- round 2 run 2: 440 trials — IDENTICAL parameter draws (same seed),
+  i.e. a metrics-correction replay, NOT new exploration
+- cumulative UNIQUE configurations tested: 1002
+  (the DSR selection count uses the conservative 1442 total)
+
+## New candidates (screening, best of each class)
+
+| candidate | trials | best PF | trades | max DD | win rate |
+|---|---|---|---|---|---|
+| asia_range_breakout | 80 | 0.78 | 21 | 1.84% | 38% |
+| squeeze_breakout | 240 | 1.19 | 149 | 4.58% | 23% |
+| first_move_continuation | 80 | 0.88 | 346 | 13.79% | 51% |
+
+None of the new classes beat the round-1 ema_cross_vol_filter
+screening results; none reached the walk-forward stage on merit.
+
+## Walk-forward (top-4 by PF, all ema_cross_vol_filter with exit knobs)
+
+Every candidate FAILED at least: oos_max_dd (4.1–6.0% vs 2.0% cap),
+hard_cap_dd (vs 3.0%), mc95_dd (corrected: 11.7–15.2% vs 3.0%),
+streak_consequence_dd, no_trade_day_share. Best PF after 2x costs:
+1.64 (NY) — below what the DD gates require. Deflated Sharpe
+probability ≈ 0.0005 (cumulative count 1442).
+
+## Conclusion (unchanged and now better measured)
+
+After 1002 unique configurations across 6 hypothesis classes and 2
+rounds: NOTHING meets the client profile (2-3% max DD, high win rate,
+intraday XAUUSD). The corrected Monte Carlo shows tail risk ~4-5x the
+client's hard cap. The holdout remains untouched. Recommendation
+stands: do not deploy anything from this research; the next round
+should change the PROBLEM (different market/session/instrument or
+explicit client-profile renegotiation), not add more trials.

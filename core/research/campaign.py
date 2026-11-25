@@ -116,8 +116,12 @@ def run_trial(strategy, ticks_df, *, start_ms: int, end_ms: int,
     contract = get_symbol_spec("XAUUSD").contract_size
     r_mults = []
     for t in trades:
-        risk_usd = abs(t.get("entry_price", 0.0) - (t.get("sl") or 0.0)) \
-            * t.get("volume", 0.0) * contract
+        # Preferred: the engine-reported intended risk at open (exact,
+        # robust to breakeven/trail SL moves). Fallback kept for old
+        # stored trade records without the field.
+        risk_usd = t.get("initial_risk_usd") or (
+            abs(t.get("entry_price", 0.0) - (t.get("sl") or 0.0))
+            * t.get("volume", 0.0) * contract)
         r_mults.append(t["pnl"] / risk_usd if risk_usd > 0 else 0.0)
     avg_loss = float(abs(np.mean(losses))) if losses else 1.0
     expectancy_r = ((float(np.mean(wins)) if wins else 0.0) - 0.0) \
