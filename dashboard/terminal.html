@@ -127,6 +127,51 @@
   .dot.idle { background: var(--text-faint); }
   .dot.active { background: var(--green); }
   .dot.error { background: var(--red); }
+  /* ── pro workspace ── */
+  .ws { display: grid; grid-template-columns: 190px 1fr 250px; gap: 1px;
+        background: var(--border); border: 1px solid var(--border);
+        border-radius: 10px; overflow: hidden; }
+  .ws > div { background: var(--surface); min-width: 0; }
+  .ws-title { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+              color: var(--text-faint); padding: 7px 10px; border-bottom: 1px solid var(--border);
+              font-weight: 650; display: flex; justify-content: space-between; }
+  .wl-row { display: flex; justify-content: space-between; padding: 7px 10px;
+            font-size: 12px; border-bottom: 1px solid #141b25; cursor: default; }
+  .wl-row.sel { background: var(--accent-soft); }
+  .wl-sym { font-weight: 650; }
+  .wl-sub { font-size: 10px; color: var(--text-faint); }
+  .wl-px { text-align: right; font-family: ui-monospace, Menlo, monospace; }
+  .wl-chg { font-size: 10.5px; font-family: ui-monospace, Menlo, monospace; }
+  .info-row { display: flex; justify-content: space-between; padding: 5px 10px;
+              font-size: 11.5px; color: var(--text-dim);
+              border-bottom: 1px solid #141b25; }
+  .info-row b { color: var(--text); font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
+  .sess { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px;
+          color: var(--text-dim); margin-left: 10px; }
+  .sess .dot { margin: 0; width: 6px; height: 6px; }
+  .top-strip { display: flex; align-items: center; gap: 18px; padding: 8px 14px;
+               background: var(--surface); border: 1px solid var(--border);
+               border-radius: 10px 10px 0 0; border-bottom: none; flex-wrap: wrap; }
+  .ts-px { font-size: 26px; font-weight: 700; font-family: ui-monospace, Menlo, monospace; line-height: 1; }
+  .ts-cell .k { font-size: 9.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .07em; }
+  .ts-cell .v { font-size: 13px; font-weight: 600; font-family: ui-monospace, Menlo, monospace; }
+  .big-btn { padding: 10px 6px; border-radius: 8px; font-weight: 700; font-size: 13px;
+             cursor: pointer; border: none; width: 100%; font-family: ui-monospace, Menlo, monospace; }
+  .big-btn.buy { background: rgba(52,192,124,.16); color: var(--green); border: 1px solid rgba(52,192,124,.5); }
+  .big-btn.buy:hover { background: rgba(52,192,124,.28); }
+  .big-btn.sell { background: rgba(229,84,79,.14); color: var(--red); border: 1px solid rgba(229,84,79,.5); }
+  .big-btn.sell:hover { background: rgba(229,84,79,.26); }
+  .big-btn .lbl { font-size: 10px; font-weight: 600; opacity: .8; display: block; }
+  .btab { padding: 8px 14px; font-size: 12px; font-weight: 600; color: var(--text-dim);
+          cursor: pointer; border-bottom: 2px solid transparent; user-select: none; }
+  .btab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .bottom-panel { background: var(--surface); border: 1px solid var(--border);
+                  border-radius: 0 0 10px 10px; border-top: none; }
+  .tape-row { display: grid; grid-template-columns: 90px 80px 80px 70px 60px;
+              padding: 3px 10px; font-size: 11.5px; font-family: ui-monospace, Menlo, monospace;
+              border-bottom: 1px solid #121924; }
+  .tape-h { color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+  @media (max-width: 1100px) { .ws { grid-template-columns: 1fr; } }
   @media (max-width: 720px) { main { padding: 16px 12px 50px; } header { padding: 0 12px; } }
 </style>
 </head>
@@ -144,6 +189,7 @@
       <span class="mono" id="hdr-price" style="font-size:17px;font-weight:700">—</span>
       <span class="mono" id="hdr-chg" style="font-size:12px">—</span>
     </div>
+    <span id="hdr-sessions"></span>
     <span class="badge grey" id="hdr-provider">—</span>
     <a class="hdr-link" href="/console">Console</a>
   </div>
@@ -159,67 +205,114 @@
 
 <main>
   <section id="tab-terminal">
-    <div class="grid-term">
-      <div class="card" style="margin-bottom:0">
-        <div class="tf-row" id="chart-tfs" style="margin-bottom:12px">
-          <div class="tf" data-tf="1m">1m</div>
-          <div class="tf" data-tf="5m">5m</div>
-          <div class="tf active" data-tf="15m">15m</div>
-          <div class="tf" data-tf="30m">30m</div>
-          <div class="tf" data-tf="1h">1h</div>
-          <div class="tf" data-tf="4h">4h</div>
-          <div class="tf" data-tf="1d">1D</div>
+    <div class="top-strip">
+      <div class="ts-cell"><div class="k">XAU/USD</div><div class="ts-px" id="ts-price">—</div></div>
+      <div class="ts-cell"><div class="k">Bid</div><div class="v" id="ts-bid" style="color:var(--red)">—</div></div>
+      <div class="ts-cell"><div class="k">Ask</div><div class="v" id="ts-ask" style="color:var(--green)">—</div></div>
+      <div class="ts-cell"><div class="k">Spread</div><div class="v" id="ts-spread">—</div></div>
+      <div class="ts-cell"><div class="k">Day change</div><div class="v" id="ts-day">—</div></div>
+      <div class="ts-cell"><div class="k">Day range</div><div class="v" id="ts-range">—</div></div>
+      <div style="flex:1"></div>
+      <div class="ts-cell"><div class="k">Equity</div><div class="v" id="ts-equity">—</div></div>
+      <div class="ts-cell"><div class="k">Balance</div><div class="v" id="ts-balance">—</div></div>
+      <div class="ts-cell"><div class="k">Floating PnL</div><div class="v" id="ts-float">—</div></div>
+      <div class="ts-cell"><div class="k">Margin free</div><div class="v" id="ts-margin">—</div></div>
+    </div>
+
+    <div class="ws">
+      <!-- watchlist / symbol info -->
+      <div>
+        <div class="ws-title"><span>Watchlist</span><span id="wl-feed" class="muted" style="font-size:9px">—</span></div>
+        <div class="wl-row sel">
+          <div><div class="wl-sym">XAUUSD</div><div class="wl-sub">Gold spot · demo</div></div>
+          <div class="wl-px"><div id="wl-price">—</div><div class="wl-chg" id="wl-chg">—</div></div>
         </div>
-        <div class="mono muted" id="ohlc-readout" style="margin-bottom:10px">—</div>
-        <div class="tf-row" style="margin-bottom:10px" id="ind-toggles">
-          <div class="tf active" data-ind="ema20">EMA 20</div>
-          <div class="tf active" data-ind="ema50">EMA 50</div>
-          <div class="tf" data-ind="bb">Bollinger</div>
-          <div class="tf active" data-ind="vol">Volume</div>
-          <div class="tf" data-ind="sma200">SMA 200</div>
+        <div class="ws-title"><span>Session stats</span></div>
+        <div class="info-row"><span>Day open</span><b id="st-open">—</b></div>
+        <div class="info-row"><span>Day high</span><b id="st-high" class="up">—</b></div>
+        <div class="info-row"><span>Day low</span><b id="st-low" class="down">—</b></div>
+        <div class="info-row"><span>ATR(14) · 1h</span><b id="st-atr">—</b></div>
+        <div class="info-row"><span>Trend (EMA20/50)</span><b id="st-trend">—</b></div>
+        <div class="ws-title"><span>Market clock</span></div>
+        <div class="info-row"><span>Sydney</span><span class="sess" id="s-syd"></span></div>
+        <div class="info-row"><span>Tokyo</span><span class="sess" id="s-tok"></span></div>
+        <div class="info-row"><span>London</span><span class="sess" id="s-lon"></span></div>
+        <div class="info-row"><span>New York</span><span class="sess" id="s-ny"></span></div>
+        <div class="info-row"><span>UTC now</span><b id="s-utc">—</b></div>
+      </div>
+
+      <!-- chart -->
+      <div>
+        <div class="ws-title">
+          <span class="tf-row" id="chart-tfs" style="gap:4px">
+            <span class="tf" data-tf="1m">1m</span>
+            <span class="tf active" data-tf="15m">15m</span>
+            <span class="tf" data-tf="30m">30m</span>
+            <span class="tf" data-tf="1h">1h</span>
+            <span class="tf" data-tf="4h">4h</span>
+            <span class="tf" data-tf="1d">1D</span>
+          </span>
+          <span class="tf-row" id="ind-toggles" style="gap:4px">
+            <span class="tf active" data-ind="ema20">EMA20</span>
+            <span class="tf active" data-ind="ema50">EMA50</span>
+            <span class="tf" data-ind="bb">BB</span>
+            <span class="tf active" data-ind="vol">VOL</span>
+            <span class="tf" data-ind="sma200">SMA200</span>
+          </span>
         </div>
         <div id="chart-wrap" style="position:relative">
           <div id="chart-legend" class="mono" style="position:absolute;top:8px;left:10px;z-index:5;font-size:12px;color:var(--text-dim);pointer-events:none"></div>
-          <div id="chart-container" style="height:440px"></div>
+          <div id="chart-container" style="height:calc(100vh - 420px);min-height:380px"></div>
         </div>
-        <div class="tf-row" style="margin-top:10px;align-items:center">
-          <button class="btn" style="padding:5px 12px;font-size:12px" onclick="loadMainChart()">↻ Refresh</button>
-          <span class="muted" id="chart-note"></span>
+        <div class="tf-row" style="padding:6px 10px;align-items:center;border-top:1px solid var(--border)">
+          <button class="btn" style="padding:4px 10px;font-size:11.5px" onclick="loadMainChart()">↻ Refresh</button>
+          <span class="muted" id="chart-note" style="font-size:11px"></span>
         </div>
       </div>
 
+      <!-- order ticket -->
       <div>
-        <div class="stats" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
-          <div class="stat"><div class="k">Balance</div><div class="v mono" id="d-balance">—</div></div>
-          <div class="stat"><div class="k">Equity</div><div class="v mono" id="d-equity">—</div></div>
-          <div class="stat"><div class="k">Floating PnL</div><div class="v mono" id="d-float">—</div></div>
-          <div class="stat"><div class="k">Open positions</div><div class="v mono" id="d-count">—</div></div>
-        </div>
-
-        <div class="card">
-          <h3>Order ticket · XAUUSD</h3>
-          <div class="fields">
+        <div class="ws-title"><span>Order ticket · XAUUSD</span></div>
+        <div style="padding:10px">
+          <div class="grid-2" style="gap:8px;margin-bottom:8px">
             <div><label>Volume (lots)</label>
-              <select id="od-vol">
+              <select id="od-vol" style="padding:6px 8px;font-size:12.5px">
                 <option>0.01</option><option>0.05</option><option selected>0.10</option>
                 <option>0.25</option><option>0.50</option><option>1.00</option>
               </select></div>
-            <div><label>SL distance ($)</label><input id="od-sl" value="5.0"></div>
-            <div><label>TP distance ($)</label><input id="od-tp" value="10.0"></div>
+            <div><label>Risk mode</label>
+              <select id="od-mode" style="padding:6px 8px;font-size:12.5px">
+                <option value="paper">Paper</option>
+              </select></div>
           </div>
-          <div class="tf-row" style="margin-bottom:12px">
-            <button class="btn sell" style="flex:1" onclick="sendOrder('SELL')">SELL MARKET</button>
-            <button class="btn buy" style="flex:1" onclick="sendOrder('BUY')">BUY MARKET</button>
+          <div class="grid-2" style="gap:8px;margin-bottom:10px">
+            <div><label>SL distance ($)</label><input id="od-sl" value="5.0" style="padding:6px 8px;font-size:12.5px"></div>
+            <div><label>TP distance ($)</label><input id="od-tp" value="10.0" style="padding:6px 8px;font-size:12.5px"></div>
           </div>
-          <div class="muted" id="od-feedback"></div>
+          <button class="big-btn sell" onclick="sendOrder('SELL')">
+            <span class="lbl">SELL · BID</span><span id="btn-bid">—</span></button>
+          <div style="height:6px"></div>
+          <button class="big-btn buy" onclick="sendOrder('BUY')">
+            <span class="lbl">BUY · ASK</span><span id="btn-ask">—</span></button>
+          <div class="muted" id="od-feedback" style="margin-top:8px"></div>
         </div>
-
-        <div class="card">
-          <h3>Open positions</h3>
-          <div class="scroll"><table id="pos-table"></table></div>
-          <div style="margin-top:12px"><button class="btn danger" onclick="closeAll()">Close all positions</button></div>
-        </div>
+        <div class="ws-title"><span>Positions</span><span id="pos-badge" class="badge grey">0</span></div>
+        <div class="scroll" style="max-height:200px"><table id="pos-table" style="font-size:11.5px"></table></div>
+        <div style="padding:8px 10px"><button class="btn danger" style="width:100%;padding:6px;font-size:12px" onclick="closeAll()">Close all</button></div>
       </div>
+    </div>
+
+    <!-- bottom panel -->
+    <div class="bottom-panel">
+      <div style="display:flex;border-bottom:1px solid var(--border)">
+        <div class="btab active" data-bt="tape">Time &amp; Sales</div>
+        <div class="btab" data-bt="log">Account log</div>
+      </div>
+      <div id="bt-tape" class="scroll" style="max-height:170px;overflow-y:auto">
+        <div class="tape-row tape-h"><span>Time</span><span>Bid</span><span>Ask</span><span>Last</span><span>Vol</span></div>
+        <div id="tape-body"></div>
+      </div>
+      <div id="bt-log" class="out" style="margin:10px;display:none;border:none;background:transparent;padding:0"></div>
     </div>
   </section>
 
@@ -376,7 +469,7 @@ async function api(url, opts) {
 
 /* ── tabs ──────────────────────────────────────────────── */
 const loaders = {
-  terminal: () => { refreshAccount(); refreshPositions(); loadMainChart(); },
+  terminal: () => { refreshAccount(); refreshPositions(); loadMainChart(); loadDayStats(); loadTape(); tickClock(); },
   strategy: () => {},
   propfirm: () => initPropFirm(),
   copilot: () => {},
@@ -407,22 +500,140 @@ async function pollQuote() {
     const b = $('hdr-provider');
     b.textContent = q.provider + (q.delayed ? ' · DELAYED' : q.stale ? ' · STALE' : '');
     b.className = 'badge ' + (q.delayed ? 'amber' : q.stale ? 'red' : 'green');
+    // top strip
+    $('ts-price').textContent = Number(q.price).toFixed(2);
+    $('ts-bid').textContent = Number(q.bid).toFixed(2);
+    $('ts-ask').textContent = Number(q.ask).toFixed(2);
+    $('ts-spread').textContent = (q.ask - q.bid).toFixed(2);
+    $('btn-bid').textContent = Number(q.bid).toFixed(2);
+    $('btn-ask').textContent = Number(q.ask).toFixed(2);
+    $('wl-price').textContent = Number(q.price).toFixed(2);
+    $('wl-feed').textContent = q.provider.replace('MetaTrader 5 ', 'MT5 ');
   } catch (e) { /* quote feed may be down; header stays dash */ }
 }
 setInterval(pollQuote, 5000);
+
+/* ── session clock + day stats ─────────────────────────── */
+const SESSIONS = [
+  ['s-syd', 'Sydney', 21, 6], ['s-tok', 'Tokyo', 0, 9],
+  ['s-lon', 'London', 7, 16], ['s-ny', 'New York', 12, 21],
+];
+function tickClock() {
+  const now = new Date();
+  const h = now.getUTCHours() + now.getUTCMinutes() / 60;
+  for (const [id, name, open, close] of SESSIONS) {
+    const isOpen = open < close ? (h >= open && h < close) : (h >= open || h < close);
+    $(id).innerHTML = `<span class="dot ${isOpen ? 'active' : 'idle'}"></span>${isOpen ? 'OPEN' : 'closed'}`;
+  }
+  $('s-utc').textContent = now.toISOString().slice(11, 19);
+}
+setInterval(tickClock, 1000);
+
+async function loadDayStats() {
+  try {
+    const r = await api('/api/data?tf=1h&bars=60');
+    const all = r.data || [];
+    if (!all.length) return;
+    const bars = all.slice(-24);
+    const highs = bars.map(b => b.high), lows = bars.map(b => b.low);
+    const dayOpen = bars[0].open, last = bars[bars.length - 1].close;
+    const chg = last - dayOpen, pct = chg / dayOpen * 100;
+    const de = $('ts-day');
+    de.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
+    de.className = 'v ' + (chg >= 0 ? 'up' : 'down');
+    $('ts-range').textContent = `${Math.min(...lows).toFixed(2)} – ${Math.max(...highs).toFixed(2)}`;
+    $('st-open').textContent = dayOpen.toFixed(2);
+    $('st-high').textContent = Math.max(...highs).toFixed(2);
+    $('st-low').textContent = Math.min(...lows).toFixed(2);
+    // ATR(14) on hourly bars
+    let atr = null;
+    if (bars.length >= 15) {
+      const trs = [];
+      for (let i = 1; i < bars.length; i++) {
+        trs.push(Math.max(bars[i].high - bars[i].low,
+          Math.abs(bars[i].high - bars[i - 1].close),
+          Math.abs(bars[i].low - bars[i - 1].close)));
+      }
+      atr = trs.slice(-14).reduce((s, v) => s + v, 0) / 14;
+    }
+    $('st-atr').textContent = atr ? '$' + atr.toFixed(2) : '—';
+    // trend from EMA20/50 on the full hourly series
+    const closes = all.map(b => b.close);
+    const e = n => { const k = 2 / (n + 1); let p = null; return closes.map((v, i) => {
+      p = i === 0 ? v : v * k + p * (1 - k); return i < n - 1 ? null : p; }); };
+    const e20 = e(20), e50 = e(50);
+    const a = e20[e20.length - 1], bb = e50[e50.length - 1];
+    if (a && bb) {
+      const up = a > bb;
+      const te = $('st-trend');
+      te.textContent = up ? 'UP ▲' : 'DOWN ▼';
+      te.className = up ? 'up' : 'down';
+    }
+    $('wl-chg').textContent = `${chg >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+    $('wl-chg').className = 'wl-chg ' + (chg >= 0 ? 'up' : 'down');
+  } catch (e) {}
+}
+setInterval(loadDayStats, 60000);
+
+/* ── time & sales tape ─────────────────────────────────── */
+let tapePrev = null;
+async function loadTape() {
+  try {
+    const r = await api('/api/ticks?count=30');
+    const ticks = (r.ticks || []).slice().reverse();
+    $('tape-body').innerHTML = ticks.map(t => {
+      const prev = tapePrev;
+      tapePrev = t.last;
+      const col = prev == null ? '' : (t.last > prev ? 'up' : t.last < prev ? 'down' : '');
+      return `<div class="tape-row"><span>${esc(t.time.slice(11, 19))}</span>` +
+        `<span>${Number(t.bid).toFixed(2)}</span><span>${Number(t.ask).toFixed(2)}</span>` +
+        `<span class="${col}">${Number(t.last).toFixed(2)}</span><span>${t.volume ?? 0}</span></div>`;
+    }).join('');
+  } catch (e) {}
+}
+setInterval(loadTape, 5000);
+
+/* ── bottom panel tabs ─────────────────────────────────── */
+document.querySelectorAll('.btab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.btab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  $('bt-tape').style.display = t.dataset.bt === 'tape' ? '' : 'none';
+  $('bt-log').style.display = t.dataset.bt === 'log' ? '' : 'none';
+  if (t.dataset.bt === 'log') {
+    api('/api/trade/account').then(a => {
+      $('bt-log').textContent =
+        `balance      $${Number(a.balance).toFixed(2)}
+` +
+        `equity       $${Number(a.equity).toFixed(2)}
+` +
+        `margin used  $${Number(a.margin).toFixed(2)}
+` +
+        `free margin  $${Number(a.free_margin).toFixed(2)}
+` +
+        `margin level ${Number(a.margin_level).toFixed(1)}%
+` +
+        `floating pnl $${Number(a.floating_pnl).toFixed(2)}
+` +
+        `open pos     ${a.open_positions_count}
+` +
+        `kill switch  ${a.kill_switch_active ? 'ENGAGED' : 'normal'}`;
+    }).catch(e => { $('bt-log').textContent = String(e.message); });
+  }
+}));
 
 /* ── trade desk ────────────────────────────────────────── */
 async function refreshAccount() {
   try {
     const a = await api('/api/trade/account');
-    $('d-balance').textContent = '$' + Number(a.balance).toFixed(2);
-    $('d-equity').textContent = '$' + Number(a.equity).toFixed(2);
-    const f = Number(a.floating_pnl || 0);
-    const fe = $('d-float');
-    fe.textContent = (f >= 0 ? '+$' : '-$') + Math.abs(f).toFixed(2);
-    fe.className = 'v mono ' + (f >= 0 ? 'up' : 'down');
-    $('d-margin').textContent = '$' + Number(a.free_margin).toFixed(2);
+    $('ts-equity').textContent = '$' + Number(a.equity).toFixed(2);
+    $('ts-balance').textContent = '$' + Number(a.balance).toFixed(2);
+    const fl = Number(a.floating_pnl || 0);
+    const tf2 = $('ts-float');
+    tf2.textContent = (fl >= 0 ? '+$' : '-$') + Math.abs(fl).toFixed(2);
+    tf2.className = 'v ' + (fl >= 0 ? 'up' : 'down');
+    $('ts-margin').textContent = '$' + Number(a.free_margin).toFixed(2);
     $('d-count').textContent = a.open_positions_count;
+    $('pos-badge').textContent = a.open_positions_count;
   } catch (e) {}
 }
 async function refreshPositions() {
@@ -495,7 +706,7 @@ function initChart() {
   if (chartReady || typeof LightweightCharts === 'undefined') return;
   const el = document.getElementById('chart-container');
   TV = LightweightCharts.createChart(el, {
-    height: 440, width: el.clientWidth,
+    height: el.clientHeight || 420, width: el.clientWidth,
     layout: {background: {type: 'solid', color: '#0a0e14'}, textColor: '#8a97a8',
              fontFamily: "ui-monospace, Menlo, monospace"},
     grid: {vertLines: {color: '#151d29'}, horzLines: {color: '#151d29'}},
@@ -586,15 +797,13 @@ async function loadMainChart() {
         'Chart engine failed to load — refresh the page.';
     }
     const last = chartData[chartData.length - 1];
-    if (last) document.getElementById('ohlc-readout').textContent =
-      `O ${last.open.toFixed(2)}  H ${last.high.toFixed(2)}  L ${last.low.toFixed(2)}  C ${last.close.toFixed(2)}  ·  ${chartData.length} bars · ${chartTf}`;
     document.getElementById('chart-note').textContent =
-      'Real recorded bars from the tick store — delayed by definition, never presented as live.';
+      `${chartData.length} bars · ${chartTf} · real recorded bars from the tick store — delayed by definition, never presented as live.`;
   } catch (e) {
-    document.getElementById('ohlc-readout').textContent = 'Chart data unavailable: ' + e.message;
+    document.getElementById('chart-note').textContent = 'Chart data unavailable: ' + e.message;
   }
 }
-window.addEventListener('resize', () => { if (chartReady) TV.resize(document.getElementById('chart-container').clientWidth, 440); });
+window.addEventListener('resize', () => { if (chartReady) TV.resize(document.getElementById('chart-container').clientWidth, document.getElementById('chart-container').clientHeight); });
 
 /* ── strategy lab ──────────────────────────────────────── */
 const DEF_PARAMS = {
