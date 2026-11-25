@@ -89,3 +89,67 @@ report (U5).
   in code by `core/research/holdout.py`; opening it requires an
   explicit one-time logged command.
 - Training + walk-forward: 2024-01-01 → 2026-05-21.
+
+---
+
+# ROUND 2 candidates (2026-11-25, written BEFORE coding)
+
+Round 1 verdict: every candidate failed the DRAWDOWN and trade-frequency
+gates (best walk-forward DD 3.5–6% per fold at 0.25% risk; deflated
+Sharpe ≈ 0.001). Round 2 tests DIFFERENT hypothesis classes — not
+re-tunes of round-1 parameters — plus exit management (breakeven,
+trail, time exit) which directly targets the drawdown failure. The
+deflated-Sharpe trial count is CUMULATIVE across rounds (round-1's 540
+trials count against round-2's selection).
+
+## V4 — `asia_range_breakout`
+
+Session: London window. Rules:
+
+1. Asia range = high/low of 00:00–06:00 UTC (from the research store,
+   computed on M5 bars; the session prefilter keeps only London ticks,
+   so the range is precomputed per day by the campaign loader and
+   passed via `ctx.extras["asia_range"]`).
+2. Entry: close beyond range_high + 0.10 (long) or range_low − 0.10
+   (short), only once per direction per day, only if no position.
+3. Stop: the opposite side of the Asia range. Take profit at
+   `rr × risk` (search: rr ∈ {1.0, 1.5, 2.0}).
+4. Skip the day if the Asia range width > 2.0 × ATR(14, M5).
+
+## V5 — `squeeze_breakout`
+
+Session: any window. Rules:
+
+1. Squeeze: Bollinger band width (20, M5) inside its own lowest
+   `squeeze_pct` (search: 20/30) percentile over the trailing 200 bars.
+2. Entry: close breaks the upper band (long) / lower band (short)
+   while the squeeze was active on the PREVIOUS bar.
+3. Stop: 1.5 × ATR(14, M5) against the entry. Take profit at
+   `rr × risk` (search: rr ∈ {1.0, 1.5, 2.0}).
+4. One entry per day per direction; no re-entry after stop-out.
+
+## V6 — `first_move_continuation`
+
+Session: London window. Rules:
+
+1. Direction: sign of the first 30 minutes' close-to-close move
+   (|move| must exceed 0.5 × ATR(14, M5), else no trade).
+2. Entry: on the first M5 bar AFTER the first 30 minutes that closes
+   beyond the 30-minute extreme by 0.05, in the same direction.
+3. Stop: the opposite 30-minute extreme. Take profit at
+   `rr × risk` (search: rr ∈ {1.0, 1.5, 2.0}).
+4. One trade per day. No trade if the 30-minute range > 2.5 × ATR.
+
+## Exit management (applies to EVERY round-2 candidate)
+
+These are engine-level U1/U2 knobs, not strategy discretion:
+
+- `breakeven`: after price moves `breakeven_rr` × risk in favour
+  (search: 1.0), SL moves to entry + `breakeven_offset` (0.05).
+- `trail`: SL trails the favourable extreme by `trail_distance`
+  (search: 1.0 × ATR).
+- `time_exit`: force-close after `time_exit_minutes` (search: 120) —
+  matches the client's "≤4h session" preference.
+
+All knobs are searched JOINTLY with entry params; every combination is
+one stored trial and counts toward the selection effect.

@@ -278,3 +278,66 @@ def test_report_writer_deterministic(tmp_path):
     assert (out1 / "trials.csv").read_text() == \
         (out2 / "trials.csv").read_text()
     assert (out1 / "gates.csv").exists()
+
+
+# ── Round 2: new candidates + exit knobs ────────────────────────────────
+
+def test_round2_variants_produce_signals_and_no_lookahead():
+    from strategies.variants import (AsiaRangeBreakout, FirstMoveContinuation,
+                                     SqueezeBreakout)
+    from core.research.campaign import LONDON, SessionWindow, run_trial
+    ext = SessionWindow("extended_0000_1100", 0, 660)
+    df = synth_ticks()
+    for strat, sess in ((AsiaRangeBreakout(), ext),
+                        (SqueezeBreakout(), LONDON),
+                        (FirstMoveContinuation(), ext)):
+        m = run_trial(strat, df, start_ms=T0,
+                      end_ms=T0 + 20 * DAY_MS, session=sess, risk_pct=0.25)
+        assert m["lookahead_violations"] == 0
+        assert m["n_trades"] >= 0
+        assert isinstance(m["pf"], float)
+
+
+def test_round2_exit_knobs_change_outcome():
+    from strategies.variants import TrendPullback
+    from core.research.campaign import LONDON, run_trial
+    kw = dict(start_ms=T0, end_ms=T0 + 20 * DAY_MS, session=LONDON,
+              risk_pct=0.25)
+    df = synth_ticks()
+    plain = run_trial(TrendPullback(atr_mult=1.0, rr=1.5), df, **kw)
+    be = run_trial(TrendPullback(atr_mult=1.0, rr=1.5), df,
+                   breakeven_rr=1.0, breakeven_offset=0.05, **kw)
+    # Both run cleanly; exit knobs must not INCREASE drawdown vs plain
+    # on the same fills (breakeven only tightens risk).
+    assert be["lookahead_violations"] == 0
+    assert plain["lookahead_violations"] == 0
+    if plain["n_trades"] and be["n_trades"]:
+        assert be["max_dd_pct"] <= plain["max_dd_pct"] + 1e-9
+
+
+def test_random_search_trial_extras_grid(tmp_path):
+    from core.research import (HoldoutGuard, SessionWindow, TrialStore,
+                               random_search)
+    from strategies.variants import TrendPullback
+    hs = HoldoutGuard(T0 + 30 * DAY_MS, T0 + 60 * DAY_MS,
+                      log_path=tmp_path / "h.jsonl")
+    store = TrialStore(tmp_path / "t.jsonl")
+    grid = {"atr_mult": [1.0, 1.5]}
+    extras = {"breakeven_rr": [0.0, 1.0], "time_exit_minutes": [0.0, 120.0]}
+    df = synth_ticks()
+    results = random_search(TrendPullback, grid, df,
+                            start_ms=T0, end_ms=T0 + 20 * DAY_MS,
+                            session=SessionWindow("test", 420, 660),
+                            risk_pct=0.25, holdout=hs, trials_store=store,
+                            n_trials=6, seed=5, trial_extras_grid=extras)
+    assert len(results) == 6
+    for r in store.entries():
+        assert set(r["extras"]) <= set(extras)
+        assert r["extras"]["breakeven_rr"] in (0.0, 1.0)
+
+
+def test_first_move_rejects_bad_open_minutes():
+    import pytest as _pytest
+    from strategies.variants import FirstMoveContinuation
+    with _pytest.raises(ValueError):
+        FirstMoveContinuation(open_minutes=17)

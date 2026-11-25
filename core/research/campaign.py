@@ -78,6 +78,10 @@ def run_trial(strategy, ticks_df, *, start_ms: int, end_ms: int,
               min_hold_seconds: int = 300,
               max_orders_per_day: int = 6,
               return_trades: bool = False,
+              breakeven_rr: float = 0.0,
+              breakeven_offset: float = 0.0,
+              trail_distance: float = 0.0,
+              time_exit_minutes: float = 0.0,
               dataset_hash: str = "u7-campaign") -> dict:
     """One trial: session-filtered tick replay -> metrics dict.
 
@@ -94,7 +98,11 @@ def run_trial(strategy, ticks_df, *, start_ms: int, end_ms: int,
         news_windows=news_windows,
         min_hold_seconds=min_hold_seconds,
         max_orders_per_day=max_orders_per_day,
-        prohibited_styles=("martingale",))
+        prohibited_styles=("martingale",),
+        breakeven_rr=breakeven_rr,
+        breakeven_offset=breakeven_offset,
+        trail_distance=trail_distance,
+        time_exit_minutes=time_exit_minutes)
     res = TickEngine().run(strategy, ticks_df, cfg)
     trades = res.get("trades", [])
     pnls = [t["pnl"] for t in trades]
@@ -166,24 +174,32 @@ def random_search(strategy_factory, param_grid: dict, ticks_df, *,
                   risk_pct: float, holdout: HoldoutGuard,
                   trials_store: TrialStore, n_trials: int = 30,
                   seed: int = 42, dataset_hash: str = "u7-campaign",
-                  news_windows: tuple = ()) -> list[dict]:
+                  news_windows: tuple = (),
+                  trial_extras_grid: dict | None = None) -> list[dict]:
     """Random search over the grid. The holdout range is checked BEFORE
-    any trial — enforced in code, not by convention."""
+    any trial — enforced in code, not by convention.
+
+    trial_extras_grid: optional per-trial run_trial kwargs (e.g. exit
+    management knobs) sampled like params and stored with the trial."""
     holdout.check_range(start_ms, end_ms, purpose="random_search")
     rng = np.random.default_rng(seed)
     keys = sorted(param_grid)
+    xkeys = sorted(trial_extras_grid) if trial_extras_grid else []
     results = []
     for i in range(n_trials):
         params = {k: param_grid[k][int(rng.integers(len(param_grid[k])))]
                   for k in keys}
+        extras = {k: trial_extras_grid[k][int(rng.integers(
+            len(trial_extras_grid[k])))] for k in xkeys}
         strategy = strategy_factory(**params)
         t0 = time.perf_counter()
         metrics = run_trial(strategy, ticks_df, start_ms=start_ms,
                             end_ms=end_ms, session=session,
                             risk_pct=risk_pct, dataset_hash=dataset_hash,
-                            news_windows=news_windows)
+                            news_windows=news_windows, **extras)
         rec = {"trial": i, "strategy": strategy.key, "params": params,
-               "session": session.name, "risk_pct": risk_pct,
+               "extras": extras, "session": session.name,
+               "risk_pct": risk_pct,
                "start_ms": start_ms, "end_ms": end_ms,
                "elapsed_s": round(time.perf_counter() - t0, 2),
                "metrics": metrics}

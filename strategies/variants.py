@@ -280,3 +280,199 @@ class EmaCrossVolFilter(Strategy):
         h = highs[2::3]
         l = lows[2::3]
         return _wilder_atr_arr(c, h, l, 14)
+
+
+# ---------------------------------------------------------------------------
+# Round 2 candidates (rules documented FIRST in docs/strategy_rules_u7.md)
+# ---------------------------------------------------------------------------
+
+class AsiaRangeBreakout(Strategy):
+    """V4: Asia-range breakout traded in the London window.
+
+    Runs on an EXTENDED data window (00:00-11:00 UTC) so the strategy
+    can see the Asia range; entries are gated to >= trade_start_min
+    (07:00 UTC). See docs/strategy_rules_u7.md V4."""
+    key = "asia_range_breakout"
+    version = "1"
+    warmup_bars = 80
+
+    def __init__(self, buffer: float = 0.10, rr: float = 1.5,
+                 max_range_atr: float = 2.0, trade_start_min: int = 420):
+        self.buffer = float(buffer)
+        self.rr = float(rr)
+        self.max_range_atr = float(max_range_atr)
+        self.trade_start_min = int(trade_start_min)
+        self._tracker = _SessionDayTracker()
+        self._asia: dict[int, tuple[float, float]] = {}   # day -> (hi, lo)
+        self._day_done: dict[int, set[int]] = {}
+        self._day_skipped: set[int] = set()
+        self._bars_today: list[tuple[float, float, float, int]] = []
+
+    def on_bar(self, ctx: Context, bar) -> list[Signal]:
+        t = int(bar.name) if hasattr(bar, "name") else int(bar["time_utc_ms"])
+        prev_day = self._tracker.day_index
+        self._tracker.advance(t)
+        day = self._tracker.day_index
+        if day != prev_day:
+            self._bars_today = []
+        minute_of_day = (t // 60_000) % 1440
+        hi, lo, close = float(bar["high"]), float(bar["low"]), float(bar["close"])
+        # Accumulate Asia-range bars (before the trade window).
+        if minute_of_day < self.trade_start_min:
+            self._bars_today.append((hi, lo, close, minute_of_day))
+            return []
+        # Asia range must be complete (we saw bars up to 06:00 UTC).
+        if not self._bars_today or self._bars_today[-1][3] < 330:
+            return []                      # no Asia data for this day
+        if day not in self._asia:
+            asia_hi = max(b[0] for b in self._bars_today)
+            asia_lo = min(b[1] for b in self._bars_today)
+            self._asia[day] = (asia_hi, asia_lo)
+            atr = _wilder_atr_arr(ctx.bars.closes(30), ctx.bars.highs(30),
+                                  ctx.bars.lows(30), 14)
+            if atr > 0 and (asia_hi - asia_lo) > self.max_range_atr * atr:
+                self._day_skipped.add(day)
+        if day in self._day_skipped or ctx.position.side != 0:
+            return []
+        tried = self._day_done.setdefault(day, set())
+        asia_hi, asia_lo = self._asia[day]
+        out: list[Signal] = []
+        if close > asia_hi + self.buffer and SIDE_LONG not in tried:
+            risk = close - asia_lo
+            if risk > 0:
+                tried.add(SIDE_LONG)
+                out.append(Signal(SIDE_LONG, sl=asia_lo,
+                                  tp=close + self.rr * risk,
+                                  tag="asia_long"))
+        elif close < asia_lo - self.buffer and SIDE_SHORT not in tried:
+            risk = asia_hi - close
+            if risk > 0:
+                tried.add(SIDE_SHORT)
+                out.append(Signal(SIDE_SHORT, sl=asia_hi,
+                                  tp=close - self.rr * risk,
+                                  tag="asia_short"))
+        return out
+
+
+class SqueezeBreakout(Strategy):
+    """V5: volatility-compression breakout. See docs V5."""
+    key = "squeeze_breakout"
+    version = "1"
+    warmup_bars = 220
+
+    def __init__(self, period: int = 20, squeeze_pct: float = 30.0,
+                 atr_mult: float = 1.5, rr: float = 1.5):
+        self.period = int(period)
+        self.squeeze_pct = float(squeeze_pct)
+        self.atr_mult = float(atr_mult)
+        self.rr = float(rr)
+        self._tracker = _SessionDayTracker()
+        self._widths: deque = deque(maxlen=200)
+        self._day_done: dict[int, set[int]] = {}
+
+    def on_bar(self, ctx: Context, bar) -> list[Signal]:
+        t = int(bar.name) if hasattr(bar, "name") else int(bar["time_utc_ms"])
+        self._tracker.advance(t)
+        closes = ctx.bars.closes(self.period + 1)
+        if len(closes) < self.period + 1:
+            return []
+        ma = float(np.mean(closes[-self.period:]))
+        sd = float(np.std(closes[-self.period:]))
+        width = 4.0 * sd
+        atr = _wilder_atr_arr(ctx.bars.closes(30), ctx.bars.highs(30),
+                              ctx.bars.lows(30), 14)
+        if atr <= 0:
+            return []
+        floor = _percentile(self._widths, self.squeeze_pct)
+        was_squeezed = len(self._widths) >= 50 and width <= floor
+        self._widths.append(width)
+        close = float(bar["close"])
+        upper, lower = ma + 2 * sd, ma - 2 * sd
+        day = self._tracker.day_index
+        if ctx.position.side != 0 or not was_squeezed:
+            return []
+        tried = self._day_done.setdefault(day, set())
+        out: list[Signal] = []
+        if close > upper and SIDE_LONG not in tried:
+            sl = close - self.atr_mult * atr
+            risk = close - sl
+            tried.add(SIDE_LONG)
+            out.append(Signal(SIDE_LONG, sl=sl, tp=close + self.rr * risk,
+                              tag="squeeze_long"))
+        elif close < lower and SIDE_SHORT not in tried:
+            sl = close + self.atr_mult * atr
+            risk = sl - close
+            tried.add(SIDE_SHORT)
+            out.append(Signal(SIDE_SHORT, sl=sl, tp=close - self.rr * risk,
+                              tag="squeeze_short"))
+        return out
+
+
+class FirstMoveContinuation(Strategy):
+    """V6: first-30-minutes direction continuation. See docs V6."""
+    key = "first_move_continuation"
+    version = "1"
+    warmup_bars = 40
+
+    def __init__(self, open_minutes: int = 30, min_move_atr: float = 0.5,
+                 buffer: float = 0.05, rr: float = 1.5,
+                 max_range_atr: float = 2.5):
+        if open_minutes % 5 != 0:
+            raise ValueError("open_minutes must be a multiple of 5")
+        self.open_minutes = int(open_minutes)
+        self.min_move_atr = float(min_move_atr)
+        self.buffer = float(buffer)
+        self.rr = float(rr)
+        self.max_range_atr = float(max_range_atr)
+        self._tracker = _SessionDayTracker()
+        self._day_done: set[int] = set()
+        self._open_bars: list[tuple[float, float, float]] = []
+        self._decided: dict[int, int] = {}      # day -> direction (+1/-1)
+
+    def on_bar(self, ctx: Context, bar) -> list[Signal]:
+        t = int(bar.name) if hasattr(bar, "name") else int(bar["time_utc_ms"])
+        prev_day = self._tracker.day_index
+        self._tracker.advance(t)
+        day = self._tracker.day_index
+        if day != prev_day:
+            self._open_bars = []
+        k = self.open_minutes // 5
+        hi, lo, close = float(bar["high"]), float(bar["low"]), float(bar["close"])
+        if len(self._open_bars) < k:
+            self._open_bars.append((hi, lo, close))
+            if len(self._open_bars) == k:
+                o_hi = max(b[0] for b in self._open_bars)
+                o_lo = min(b[1] for b in self._open_bars)
+                o_close = self._open_bars[-1][2]
+                o_open = self._open_bars[0][2]
+                atr = _wilder_atr_arr(ctx.bars.closes(30), ctx.bars.highs(30),
+                                      ctx.bars.lows(30), 14)
+                if atr <= 0 or (o_hi - o_lo) > self.max_range_atr * atr:
+                    return []
+                move = o_close - o_open
+                if abs(move) >= self.min_move_atr * atr:
+                    self._decided[day] = 1 if move > 0 else -1
+            return []
+        direction = self._decided.get(day, 0)
+        if direction == 0 or day in self._day_done or ctx.position.side != 0:
+            return []
+        o_hi = max(b[0] for b in self._open_bars)
+        o_lo = min(b[1] for b in self._open_bars)
+        out: list[Signal] = []
+        if direction == 1 and close > o_hi + self.buffer:
+            sl = o_lo
+            risk = close - sl
+            if risk > 0:
+                self._day_done.add(day)
+                out.append(Signal(SIDE_LONG, sl=sl,
+                                  tp=close + self.rr * risk,
+                                  tag="fm_long"))
+        elif direction == -1 and close < o_lo - self.buffer:
+            sl = o_hi
+            risk = sl - close
+            if risk > 0:
+                self._day_done.add(day)
+                out.append(Signal(SIDE_SHORT, sl=sl,
+                                  tp=close - self.rr * risk,
+                                  tag="fm_short"))
+        return out
