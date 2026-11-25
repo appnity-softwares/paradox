@@ -60,6 +60,13 @@ class NewsRestriction:
     block_close: bool = True             # manual/signal closes
     block_pending: bool = True           # new pending orders
     block_sltp: bool = True              # SL/TP hits inside the window
+    # U3: which events matter and what happens to open positions when a
+    # window starts. Defaults cover the classic gold rulebook case:
+    # high-impact USD events only, positions kept (the firm rulebook
+    # must state otherwise for this to change).
+    currencies: tuple[str, ...] = ("USD",)
+    impacts: tuple[str, ...] = ("high",)
+    position_policy: str = "keep"        # keep | tighten_sl | flatten
 
 
 @dataclass
@@ -181,7 +188,13 @@ class FirmRuleSet:
         d = dict(d)
         d["daily_loss"] = DailyLossRule(**d["daily_loss"])
         d["max_loss"] = MaxLossRule(**d["max_loss"])
-        d["news_restriction"] = NewsRestriction(**d["news_restriction"])
+        # U3: JSON lists -> tuples for the news filter fields (before
+        # the dataclass is constructed).
+        nr_raw = dict(d["news_restriction"])
+        for k in ("currencies", "impacts"):
+            if isinstance(nr_raw.get(k), list):
+                nr_raw[k] = tuple(nr_raw[k])
+        d["news_restriction"] = NewsRestriction(**nr_raw)
         d["consistency_rule"] = ConsistencyRule(**d["consistency_rule"])
         d["automation_policy"] = AutomationPolicy(**d["automation_policy"])
         # U1 fields are optional in old JSON; missing keys take the
@@ -219,6 +232,14 @@ class FirmRuleSet:
         if self.news_restriction.enabled and self.news_restriction.applies_to \
                 not in ("open", "close", "open_and_close"):
             problems.append("unknown news applies_to")
+        if self.news_restriction.position_policy not in \
+                ("keep", "tighten_sl", "flatten"):
+            problems.append("unknown news position_policy")
+        for imp in self.news_restriction.impacts:
+            if imp not in ("low", "medium", "high"):
+                problems.append(f"unknown news impact: {imp}")
+        if not self.news_restriction.currencies:
+            problems.append("news currencies must not be empty")
         if self.consistency_rule.enabled and not \
                 0 < self.consistency_rule.best_day_max_share <= 1.0:
             problems.append("consistency share must be in (0, 1]")

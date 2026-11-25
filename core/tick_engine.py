@@ -115,6 +115,10 @@ class BacktestConfig:
     # SessionProfile (docs/session_profiles.md). Semantics match live:
     # entries only inside the window and before the cutoff; open
     # positions flatten when a new window starts (protective).
+    # U3: when True, NEW ENTRIES inside a news window are blocked
+    # (parity with the live router's block_open). Default OFF so legacy
+    # configs only see the news slippage multiplier.
+    block_entries_in_news_windows: bool = False
     session_start_min: int | None = None
     session_end_min: int | None = None
     session_days: tuple[int, ...] | None = None   # weekdays, Mon=0 (UTC)
@@ -235,6 +239,7 @@ class TickEngine:
             "max_orders_per_day": 0,
             "max_modifications_per_trade": 0,
             "session_no_new_entries": 0,
+            "news_window": 0,
             "prohibited_style_martingale": 0,
         }
         bh_min_hold_ms = (config.min_hold_seconds * 1000
@@ -347,6 +352,12 @@ class TickEngine:
                     continue  # single net position; extra entries ignored
                 if config.require_sl and sig.sl is None:
                     continue  # mandatory stop-loss
+                # ── U3 news-window entry block (live block_open parity) ──
+                if config.block_entries_in_news_windows and \
+                        config.news_windows:
+                    if in_news(decision_ms):
+                        behaviour_blocks["news_window"] += 1
+                        continue
                 # ── U2 session entry cutoff (same rule as the live gate) ──
                 if sess_active:
                     mod = (decision_ms // 60_000) % 1440

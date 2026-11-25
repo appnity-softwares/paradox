@@ -270,6 +270,7 @@ def test_parity_no_controls_baseline_and_block_report():
         "min_hold_time": 0, "max_orders_per_day": 0,
         "max_modifications_per_trade": 0,
         "session_no_new_entries": 0,
+        "news_window": 0,
         "prohibited_style_martingale": 0}
     assert base["total_trades"] == 2
 

@@ -97,13 +97,20 @@ class SessionScheduler:
         elif getattr(ruleset, "status", None) != "verified":
             problems.append("ruleset_not_verified")
 
-        # 5. Calendar loaded if the news restriction is enabled (U3
-        #    populates router._calendar; until then this fails closed).
+        # 5. Calendar loaded AND fresh if the news restriction is
+        #    enabled (U3). Fail closed: missing or stale -> skip.
         if ruleset is not None and \
                 getattr(getattr(ruleset, "news_restriction", None),
                         "enabled", False):
-            if getattr(router, "_calendar", None) is None:
+            svc = getattr(router, "_calendar_service", None)
+            if svc is None:
                 problems.append("calendar_not_loaded")
+            else:
+                st = svc.status()
+                if st == "missing":
+                    problems.append("calendar_not_loaded")
+                elif st == "stale":
+                    problems.append("calendar_stale")
 
         return (len(problems) == 0, problems)
 

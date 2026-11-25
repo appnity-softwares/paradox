@@ -227,6 +227,103 @@ class ExecutionRouter:
         self.sessions.pop(account_id, None)
         self.session_windows.pop(account_id, None)
 
+    # ── U3: economic calendar ────────────────────────────────────────────
+    def attach_calendar(self, service) -> None:
+        """Wire a CalendarService. The compliance engine's fail-closed
+        news check consumes it per intent; a missing/stale calendar
+        blocks entries for accounts WITH a news restriction only."""
+        self._calendar_service = service
+
+    def _calendar_for(self, account_id: str, symbol: str,
+                      ts_ms: int) -> dict[int, str] | None:
+        """Filtered {event_start_ms: label} around the intent time, or
+        None when unavailable (which the engine treats as fail-closed
+        for news-restricted accounts)."""
+        svc = getattr(self, "_calendar_service", None)
+        ruleset = self.rulesets.get(account_id)
+        if ruleset is None or not ruleset.news_restriction.enabled:
+            return {} if svc is not None else None   # unrestricted accounts
+                                                       # are not affected
+        if svc is None:
+            return None
+        nr = ruleset.news_restriction
+        return svc.calendar_map(nr.currencies, nr.impacts, ts_ms)
+
+    def enforce_news_position_policy(self, account_id: str, ts_ms: int,
+                                     horizon_s: int = 60) -> list[dict]:
+        """When a news window STARTS, apply the rule set's position
+        policy to open positions on affected symbols:
+        keep -> no-op; tighten_sl -> risk-reducing SL move (protective);
+        flatten -> protective close. Deterministic, audited."""
+        svc = getattr(self, "_calendar_service", None)
+        ruleset = self.rulesets.get(account_id)
+        if svc is None or ruleset is None or \
+                not ruleset.news_restriction.enabled:
+            return []
+        nr = ruleset.news_restriction
+        policy = nr.position_policy
+        if policy == "keep":
+            return []
+        # Symbols of this account whose quote currency matches the
+        # event currencies (XAUUSD -> USD).
+        syms = {getattr(self.specs.get(account_id), "symbol", "XAUUSD")}
+        affected = {s for s in syms
+                    if s[-3:] in set(nr.currencies)}
+        if not affected:
+            return []
+        # Any window currently open or starting within the horizon?
+        for sym in sorted(affected):
+            events = svc.events_filtered(
+                nr.currencies, nr.impacts,
+                ts_ms - nr.window_before_min * 60_000,
+                ts_ms + nr.window_after_min * 60_000 + horizon_s * 1000)
+            if events:
+                break
+        else:
+            return []
+        actions: list[dict] = []
+        try:
+            open_positions = self.broker.positions_of(account_id)
+        except Exception:
+            open_positions = []
+        for pos in open_positions:
+            sym = getattr(pos, "symbol", "XAUUSD")
+            if sym not in affected:
+                continue
+            pid = getattr(pos, "position_id", None) \
+                or getattr(pos, "ticket", None)
+            if pid is None:
+                continue
+            if policy == "flatten":
+                rec = self.protective_close_all(account_id, ts_ms,
+                                                "news_window_flatten")
+                return rec
+            if policy == "tighten_sl":
+                # Risk-reducing move: SL to breakeven-or-better is the
+                # deterministic maximum tightening applied here.
+                entry = getattr(pos, "entry_price", None) \
+                    or getattr(pos, "price_open", None)
+                side = getattr(pos, "side", 1)
+                if entry is None:
+                    continue
+                new_sl = entry if side == 1 else entry
+                try:
+                    self.behaviour.check_modify(account_id, str(pid),
+                                                int(ts_ms), protective=True)
+                except Exception:
+                    pass
+                try:
+                    self.broker.modify_position(pid, sl_price=new_sl)
+                    actions.append({"position_id": str(pid), "action":
+                                    "tighten_sl", "sl_price": new_sl})
+                    self.audit.append({"event": "news_tighten_sl",
+                                       "account_id": account_id,
+                                       "position_id": str(pid),
+                                       "ts_ms": int(ts_ms)})
+                except Exception:
+                    continue
+        return actions
+
     def protective_close_all(self, account_id: str, ts_ms: int,
                              reason: str = "session_flatten") -> list[dict]:
         """Close every open position of the account as a PROTECTIVE
@@ -410,7 +507,9 @@ class ExecutionRouter:
             ProposedTrade(symbol=intent.symbol, lot=lot, side=intent.side,
                            price=price, sl_price=intent.sl_price,
                            time_ms=intent.created_ms),
-            calendar_events_ms=self._calendar,
+            calendar_events_ms=self._calendar_for(intent.account_id,
+                                                  intent.symbol,
+                                                  intent.created_ms),
             spec_max_lot=spec.max_lot)
         steps.append({"step": "compliance", "ok": compliance.allowed,
                       "reasons": list(compliance.reasons)})
