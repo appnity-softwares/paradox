@@ -6,6 +6,8 @@ sign-off, and the AI assistant restricted to read/propose tools.
 """
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -400,6 +402,40 @@ class SessionBindRequest(BaseModel):
     profile: str | None = Field(default=None)   # None unbinds
 
 
+@router.get("/accounts/{account_id}/payout-evidence-pack")
+def payout_evidence_pack(account_id: str, From: str = "", To: str = "",
+                         user: dict = Depends(require("trader"))):
+    """U5: deterministic payout evidence pack (ZIP). from/to are UTC
+    ISO dates or epoch ms."""
+    from fastapi import Response
+    from datetime import datetime, timezone
+
+    def _ms(v: str, default: int) -> int:
+        if not v:
+            return default
+        if v.isdigit():
+            return int(v)
+        try:
+            dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp() * 1000)
+        except ValueError:
+            raise HTTPException(422, f"invalid date: {v!r}")
+
+    state = PLATFORM
+    from_ms = _ms(From, 0)
+    to_ms = _ms(To, int(time.time() * 1000))
+    try:
+        blob = state.payout_evidence_pack(account_id, from_ms, to_ms)
+    except KeyError:
+        raise HTTPException(404, f"unknown account {account_id!r}")
+    return Response(content=blob, media_type="application/zip",
+                    headers={"Content-Disposition":
+                             'attachment; filename="evidence_'
+                             f'{account_id}_{from_ms}-{to_ms}.zip"'})
+
+
 @router.post("/session-profiles")
 def upsert_session_profile(req: SessionProfileRequest,
                            user: dict = Depends(require("trader"))) -> dict:
@@ -422,6 +458,12 @@ def upsert_session_profile(req: SessionProfileRequest,
 def list_session_profiles(user: dict = Depends(require("viewer"))) -> dict:
     return {"profiles": {name: p.to_dict()
                          for name, p in PLATFORM.session_profiles.items()}}
+
+
+@router.get("/network-status")
+def network_status(user: dict = Depends(require("viewer"))) -> dict:
+    """U5: network identity registry view (no credentials, ever)."""
+    return PLATFORM.network_status()
 
 
 @router.post("/accounts/{account_id}/session-profile")

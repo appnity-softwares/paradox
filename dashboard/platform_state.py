@@ -29,6 +29,9 @@ from core.execution import (  # noqa: E402
     PaperBroker,
 )
 from core.execution.monitoring import FeedMonitor, Reconciler  # noqa: E402
+from core.accounts import (CrossAccountGuard, NetworkIdentityRegistry,
+                           DailySnapshotStore, build_evidence_pack,
+                           fingerprint_report)
 from core.session import SessionProfile, SessionRunStore, SessionScheduler  # noqa: E402
 from core.risk import AccountSnapshot, DeterministicRiskEngine, KillSwitch, \
     RiskConfig  # noqa: E402
@@ -89,6 +92,15 @@ class PlatformState:
         self.session_runs = SessionRunStore(self.state_dir / "session_runs.jsonl")
         self.scheduler = SessionScheduler(self.router, notifier=self.notifier,
                                           run_store=self.session_runs)
+
+        # ── U5: payout protection ────────────────────────────────────────
+        self.network_registry = NetworkIdentityRegistry(
+            self.state_dir / "network_identity.json")
+        self.router.attach_network_registry(self.network_registry)
+        self.cross_guard = CrossAccountGuard()
+        self.router.attach_cross_account_guard(self.cross_guard)
+        self.compliance_snapshots = DailySnapshotStore(
+            self.state_dir / "compliance_snapshots.jsonl")
 
     # ── accounts ─────────────────────────────────────────────────────────
     def register_account(self, account_id: str, balance: float,
@@ -196,6 +208,89 @@ class PlatformState:
                 "status": state,
                 "window": win if win else None,
                 "last_run": last}
+
+    # ── U5: payout protection ────────────────────────────────────────────
+    def _policy_of(self, account_id: str) -> str:
+        rs = self.rulesets.get(account_id)
+        if rs is None:
+            return "unknown"
+        if rs.vps_policy == "allowed" and rs.ip_policy == "allowed":
+            return "allowed"
+        return "not_allowed"
+
+    def network_status(self) -> dict:
+        return {"accounts": [a.to_dict() for a in
+                             self.network_registry.entries()],
+                "shared_ip_conflicts": self.network_registry.shared_ip_conflicts(
+                    self._policy_of),
+                "shared_bridge_conflicts":
+                    self.network_registry.shared_bridge_conflicts()}
+
+    def payout_evidence_pack(self, account_id: str, from_ms: int,
+                             to_ms: int) -> bytes:
+        """Deterministic ZIP; no LLM. Raises KeyError for unknown
+        accounts."""
+        if account_id not in self.accounts:
+            raise KeyError(account_id)
+        router = self.router
+        chain = router.audit.verify_chain()
+        chain_txt = ("hash chain intact" if chain is None
+                     else f"hash chain BROKEN at entry index {chain}")
+        trades = []
+        for rec in getattr(self.broker, "order_history", []):
+            appr = rec.approved
+            if getattr(appr, "account_id", None) != account_id:
+                continue
+            intent = getattr(appr, "intent", None)
+            sv = getattr(intent, "strategy_version", None)
+            rs = self.rulesets.get(account_id)
+            trades.append({
+                "account_id": account_id,
+                "symbol": getattr(intent, "symbol", "XAUUSD"),
+                "side": getattr(intent, "side", ""),
+                "lot": getattr(appr, "lot", ""),
+                "entry_price": rec.fill_price,
+                "exit_price": "",
+                "pnl": "",
+                "strategy_version_id": getattr(sv, "version_id", ""),
+                "signal_time_ms": getattr(intent, "created_ms", ""),
+                "order_time_ms": getattr(appr, "approved_ms", ""),
+                "fill_time_ms": rec.fill_ms,
+                "hold_duration_s": "",
+                "modification_count": "",
+                "intended_risk_pct":
+                    getattr(intent, "intended_risk_pct", ""),
+                "risk_decision_trail": list(
+                    getattr(appr, "decision_trail", ()) or ()),
+                "compliance_reasons": list(
+                    getattr(appr, "compliance_reasons", ()) or ()),
+                "ruleset_version": getattr(rs, "version", ""),
+                "ruleset_hash": rs.content_hash() if rs is not None else "",
+                "session_profile":
+                    getattr(self.router.sessions.get(account_id),
+                            "name", ""),
+            })
+        def _read_json(name, default):
+            f = self.state_dir / name
+            if f.exists():
+                try:
+                    return json.loads(f.read_text())
+                except (OSError, ValueError):
+                    return default
+            return default
+        specs = _read_json("strategy_specs.json", {})
+        return build_evidence_pack(
+            account_id, from_ms, to_ms,
+            trades=trades,
+            compliance_snapshots=self.compliance_snapshots.entries(
+                account_id, from_ms, to_ms),
+            network_history=self.network_registry.history(account_id),
+            audit_entries=router.audit.entries(),
+            chain_verification=chain_txt,
+            firm_support_confirmations=_read_json(
+                "firm_support_confirmations.json", []),
+            strategy_rationales=_read_json("strategy_rationales.json", {}),
+            strategy_fingerprints=fingerprint_report(specs))
 
     # ── data-source labels (Part 14.1: honest labels only) ───────────────
     def data_sources(self) -> list[dict]:

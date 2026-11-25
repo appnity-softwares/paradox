@@ -53,7 +53,8 @@ class ModeGate:
                  rules_verified: bool = False,
                  confirmed_by: str | None = None,
                  unresolved_errors: int = 0,
-                 ruleset=None) -> AccountMode:
+                 ruleset=None,
+                 network_reasons: tuple[str, ...] = ()) -> AccountMode:
         """`ruleset` (U1): when a FirmRuleSet is supplied and mode is
         AUTO, an ea_policy of `unknown` or `forbidden` refuses Auto
         (fail closed). Manual/Semi-auto stay available."""
@@ -75,6 +76,12 @@ class ModeGate:
                 missing.append(
                     f"ea_policy {ruleset.ea_policy!r} does not permit "
                     f"auto mode")
+            # U5: network identity conflicts (shared IP with a firm
+            # whose vps/ip policy is not 'allowed', unexpected IP
+            # change) block Auto.
+            if network_reasons:
+                missing.append("network identity conflict: "
+                               + "; ".join(network_reasons))
             if missing:
                 raise ModeError("auto mode refused: " + "; ".join(missing))
         am = AccountMode(mode, verdict, paper_days, rules_verified,

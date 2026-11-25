@@ -228,6 +228,28 @@ class ExecutionRouter:
         self.session_windows.pop(account_id, None)
 
     # ── U3: economic calendar ────────────────────────────────────────────
+    def attach_network_registry(self, registry) -> None:
+        """U5: network identity registry for Auto-mode blocking."""
+        self._network_registry = registry
+
+    def attach_cross_account_guard(self, guard) -> None:
+        """U5: correlated-intent guard across accounts."""
+        self._cross_guard = guard
+
+    def _network_blocks(self, account_id: str) -> list[str]:
+        reg = getattr(self, "_network_registry", None)
+        if reg is None:
+            return []
+        def policy_of(aid: str) -> str:
+            rs = self.rulesets.get(aid)
+            if rs is None:
+                return "unknown"
+            # 'allowed' only when BOTH vps and ip policies allow.
+            if rs.vps_policy == "allowed" and rs.ip_policy == "allowed":
+                return "allowed"
+            return "not_allowed"
+        return reg.blocks_auto(account_id, policy_of)
+
     def attach_calendar(self, service) -> None:
         """Wire a CalendarService. The compliance engine's fail-closed
         news check consumes it per intent; a missing/stale calendar
@@ -396,6 +418,13 @@ class ExecutionRouter:
         self.behaviour.record_request(intent.account_id, intent.created_ms)
         result = self._pipeline(intent, approval_token, steps)
         self._results[intent.idempotency_key] = result
+        # U5: record submitted (non-rejected) entries for correlation.
+        guard = getattr(self, "_cross_guard", None)
+        if guard is not None and result.status != "rejected" \
+                and intent.side != SIDE_CLOSE:
+            guard.record(intent.account_id, intent.symbol, intent.side,
+                         getattr(intent.strategy_version, "version_id", ""),
+                         intent.created_ms)
         self.audit.append({"event": "execution_result",
                            "key": intent.idempotency_key,
                            "status": result.status,
@@ -433,6 +462,46 @@ class ExecutionRouter:
             return ExecutionResult(intent.idempotency_key, "rejected",
                                    ("ea_policy_blocks_auto",),
                                    steps=tuple(steps))
+
+        # U5: network identity re-check at order time (the ruleset or
+        # IP picture may have changed since set_mode).
+        if mode == AUTO:
+            net_blocks = self._network_blocks(intent.account_id)
+            if net_blocks:
+                steps.append({"step": "network_identity", "ok": False,
+                              "error": "network_identity_conflict"})
+                self.audit.append({"event": "network_block",
+                                   "account_id": intent.account_id,
+                                   "reasons": net_blocks})
+                self.notifier.notify("network_conflict",
+                                     f"auto order blocked: {net_blocks}")
+                return ExecutionResult(intent.idempotency_key, "rejected",
+                                       ("network_identity_conflict",),
+                                       steps=tuple(steps))
+
+        # U5: cross-account correlation guard for NEW entries. Closing
+        # an existing position is risk-REDUCING and never blocked here.
+        guard = getattr(self, "_cross_guard", None)
+        if guard is not None and intent.side != SIDE_CLOSE:
+            decision = guard.check(
+                intent.account_id, intent.symbol, intent.side,
+                getattr(intent.strategy_version, "version_id", ""),
+                intent.created_ms,
+                getattr(ruleset, "copy_trading_policy", "unknown")
+                if ruleset is not None else "unknown")
+            if decision["blocked"]:
+                steps.append({"step": "cross_account", "ok": False,
+                              "error": "copy_trading_blocked"})
+                self.audit.append({"event": "copy_trading_block",
+                                   "account_id": intent.account_id,
+                                   "matches": decision["matches"]})
+                self.notifier.notify(
+                    "copy_trading_block",
+                    f"correlated intent blocked on {intent.account_id}")
+                return ExecutionResult(intent.idempotency_key, "rejected",
+                                       ("copy_trading_blocked",),
+                                       steps=tuple(steps))
+            steps.append({"step": "cross_account", "ok": True})
 
         # U2: session gate. The boundary is enforced HERE, in the gate,
         # not only in the strategy. Management of open trades is NOT
