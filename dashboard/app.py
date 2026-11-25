@@ -49,7 +49,9 @@ app.include_router(charts_router.router)
 
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html"))
+    """Default landing: the honest platform console."""
+    return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "console.html"))
 
 
 @app.get("/console")
@@ -58,3 +60,11 @@ def console():
     live controls locked until sign-off."""
     return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      "console.html"))
+
+
+@app.get("/legacy")
+def legacy():
+    """Pre-platform prototype UI (mock data, MT5 bridge demo).
+    Kept for reference only — not the product."""
+    return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "index.html"))

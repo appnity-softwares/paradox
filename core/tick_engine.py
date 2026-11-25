@@ -572,63 +572,219 @@ class TickEngine:
 
             scan_from = lo
 
-            # 1) Pending order triggers (first-hit vectorized scan).
-            still_pending: list[_PendingOrder] = []
-            filled_a_pending = False
-            for idx_po, po in enumerate(pendings):
-                if po.side == SIDE_LONG:
-                    trigger = ca <= po.price if po.kind == KIND_LIMIT else ca >= po.price
-                else:
-                    trigger = cb >= po.price if po.kind == KIND_LIMIT else cb <= po.price
-                hit = np.flatnonzero(trigger)
-                if hit.size == 0:
-                    still_pending.append(po)
-                    continue
-                k = lo + int(hit[0])
-                ts = int(ct[hit[0]])
-                if po.kind == KIND_LIMIT:
-                    fill_price = float(min(ca[hit[0]], po.price)) if po.side == SIDE_LONG \
-                        else float(max(cb[hit[0]], po.price))
-                else:
-                    fill_price = float(ca[hit[0]] + stop_slip(ts)) if po.side == SIDE_LONG \
-                        else float(cb[hit[0]] - stop_slip(ts))
-                open_position(po.side, fill_price, ts, po.sl, po.tp, po.volume, po.tag)
-                scan_from = max(scan_from, k + 1)
-                filled_a_pending = True
-                # Keep the not-yet-checked pendings alive behind the new position.
-                still_pending.extend(pendings[idx_po + 1:])
-                break
-            # still_pending excludes the filled order and keeps the remainder.
-            pendings = still_pending
+            if strategy.uses_ticks:
+                # ── Per-tick slow path (strategies with uses_ticks=True) ──
+                # Same order of operations as the vectorized path, one
+                # tick at a time: pending triggers, due market orders,
+                # protective exits, then the on_tick callback. An entry
+                # and its SL can only be evaluated from the tick AFTER
+                # the entry tick (same documented tolerance).
+                for k in range(lo, hi):
+                    ts = int(t[k])
+                    b_k = float(bid[k])
+                    a_k = float(ask[k])
 
-            # 2) Market/close orders after their latency window.
-            still_market: list[_MarketOrder] = []
-            for mo in markets:
-                k_rel = int(np.searchsorted(ct, mo.target_ms, side="left"))
-                if k_rel >= len(ct):
-                    still_market.append(mo)
-                    continue
-                k = lo + k_rel
-                ts = int(ct[k_rel])
-                if mo.side == SIDE_CLOSE:
-                    if pos is not None:
-                        # Signal exits pay the market side too: long closes at
-                        # bid - slip, short closes at ask + slip.
-                        if pos.side == SIDE_LONG:
-                            price = float(cb[k_rel] - market_slip(ts))
+                    # 1) Pending order triggers (scalar).
+                    filled_idx = None
+                    for idx_po, po in enumerate(pendings):
+                        if po.side == SIDE_LONG:
+                            trig = a_k <= po.price if po.kind == KIND_LIMIT \
+                                else a_k >= po.price
                         else:
-                            price = float(ca[k_rel] + market_slip(ts))
-                        close_position(price, ts, "Signal exit", mo.volume)
-                        scan_from = max(scan_from, k + 1)
-                else:
-                    price = float(ca[k_rel] + market_slip(ts)) if mo.side == SIDE_LONG \
-                        else float(cb[k_rel] - market_slip(ts))
-                    open_position(mo.side, price, ts, mo.sl, mo.tp, mo.volume, mo.tag)
-                    scan_from = max(scan_from, k + 1)
-            markets = still_market
+                            trig = b_k >= po.price if po.kind == KIND_LIMIT \
+                                else b_k <= po.price
+                        if trig:
+                            if po.kind == KIND_LIMIT:
+                                fp = float(min(a_k, po.price)) if po.side == SIDE_LONG \
+                                    else float(max(b_k, po.price))
+                            else:
+                                fp = float(a_k + stop_slip(ts)) if po.side == SIDE_LONG \
+                                    else float(b_k - stop_slip(ts))
+                            open_position(po.side, fp, ts, po.sl, po.tp,
+                                          po.volume, po.tag)
+                            filled_idx = idx_po
+                            break
+                    if filled_idx is not None:
+                        pendings = [po for i_po, po in enumerate(pendings)
+                                    if i_po != filled_idx]
 
-            # 3) Manage the open position tick by tick (vectorized scans).
-            manage_position(scan_from - lo, hi - lo, ct, cb, ca)
+                    # 2) Market/close orders after their latency window.
+                    still_market: list[_MarketOrder] = []
+                    for mo in markets:
+                        if mo.target_ms > ts:
+                            still_market.append(mo)
+                            continue
+                        if mo.side == SIDE_CLOSE:
+                            if pos is not None:
+                                price = float(b_k - market_slip(ts)) \
+                                    if pos.side == SIDE_LONG \
+                                    else float(a_k + market_slip(ts))
+                                close_position(price, ts, "Signal exit",
+                                               mo.volume)
+                        else:
+                            price = float(a_k + market_slip(ts)) \
+                                if mo.side == SIDE_LONG \
+                                else float(b_k - market_slip(ts))
+                            open_position(mo.side, price, ts, mo.sl, mo.tp,
+                                          mo.volume, mo.tag)
+                    markets = still_market
+
+                    # 3) Protective exits on this tick (scalar). Skipped on
+                    # the entry tick itself per the documented tolerance.
+                    if pos is not None and pos.entry_time_ms < ts:
+                        mark = b_k if pos.side == SIDE_LONG else a_k
+                        eff_sl = pos.sl
+                        if config.trail_distance > 0 or config.breakeven_rr > 0:
+                            if pos.side == SIDE_LONG:
+                                run_best = max(mark, pos.high_water)
+                                cand = run_best - config.trail_distance \
+                                    if config.trail_distance > 0 else -np.inf
+                                if config.breakeven_rr > 0 and pos.sl > 0:
+                                    r0 = abs(pos.entry_price - pos.sl)
+                                    be = pos.entry_price + config.breakeven_offset
+                                    if run_best >= pos.entry_price + config.breakeven_rr * r0:
+                                        cand = max(cand, be)
+                                eff_sl = max(cand, pos.sl if pos.sl > 0 else -np.inf)
+                            else:
+                                run_best = min(mark, pos.high_water)
+                                cand = run_best + config.trail_distance \
+                                    if config.trail_distance > 0 else np.inf
+                                if config.breakeven_rr > 0 and pos.sl > 0:
+                                    r0 = abs(pos.entry_price - pos.sl)
+                                    be = pos.entry_price - config.breakeven_offset
+                                    if run_best <= pos.entry_price - config.breakeven_rr * r0:
+                                        cand = min(cand, be)
+                                eff_sl = min(cand, pos.sl if pos.sl > 0 else np.inf)
+                            if pos.sl > 0 and eff_sl != pos.sl:
+                                mods_cap = config.max_modifications_per_trade
+                                if mods_cap is not None and \
+                                        pos.entry_time_ms in bh_mods_frozen:
+                                    behaviour_blocks["max_modifications_per_trade"] += 1
+                                else:
+                                    bh_mods[pos.entry_time_ms] = \
+                                        bh_mods.get(pos.entry_time_ms, 0) + 1
+                                    if bh_mods[pos.entry_time_ms] >= mods_cap:
+                                        bh_mods_frozen.add(pos.entry_time_ms)
+                                    pos.sl = float(eff_sl)
+                        elif pos.sl > 0:
+                            pos.sl = float(eff_sl)
+
+                        sl_hit = (mark <= eff_sl) if pos.side == SIDE_LONG and eff_sl > 0 \
+                            else ((mark >= eff_sl) if pos.side == SIDE_SHORT and eff_sl > 0
+                                  else False)
+                        tp_hit = (mark >= pos.tp) if pos.side == SIDE_LONG and pos.tp > 0 \
+                            else ((mark <= pos.tp) if pos.side == SIDE_SHORT and pos.tp > 0
+                                  else False)
+                        time_hit = ts >= pos.entry_time_ms + \
+                            int(config.time_exit_minutes * MS_PER_MINUTE) \
+                            if config.time_exit_minutes > 0 else False
+                        floating = (mark - pos.entry_price) * contract * pos.volume * pos.side
+                        eq_now = balance + floating
+                        margin = pos.volume * contract * mark / leverage
+                        so_hit = (margin > 0 and eq_now / margin <= stop_out_level)
+
+                        event = None
+                        if sl_hit:
+                            event = "SL"
+                        elif tp_hit:
+                            event = "TP"
+                        elif so_hit:
+                            event = "stop_out"
+                        elif time_hit:
+                            event = "time_exit"
+                        if event is not None:
+                            price = float(b_k - stop_slip(ts)) \
+                                if pos.side == SIDE_LONG \
+                                else float(a_k + stop_slip(ts))
+                            close_position(price, ts, event)
+                        else:
+                            if pos is not None:
+                                if pos.side == SIDE_LONG:
+                                    pos.high_water = max(pos.high_water, mark)
+                                else:
+                                    pos.high_water = min(pos.high_water, mark)
+
+                    # 4) on_tick callback.
+                    equity_t = balance
+                    if pos is not None:
+                        mark_t = b_k if pos.side == SIDE_LONG else a_k
+                        equity_t = balance + (mark_t - pos.entry_price) * \
+                            contract * pos.volume * pos.side
+                    ctx.balance = balance
+                    ctx.equity = equity_t
+                    ctx.position = self._position_view(pos, contract, b_k, a_k)
+                    ctx.tick_time_utc_ms = ts
+                    ctx.bid = b_k
+                    ctx.ask = a_k
+                    tick_dict = {"time_utc_ms": ts, "bid": b_k, "ask": a_k}
+                    try:
+                        signals_t = strategy.on_tick(ctx, tick_dict)
+                    except LookAheadError as exc:
+                        lookahead.append(f"on_tick: {exc}")
+                        signals_t = []
+                    if signals_t:
+                        submit_signals(signals_t, ts, (b_k + a_k) / 2.0, equity_t)
+                    deliver_fills()
+                    equity_curve.append((ts, round(float(equity_t), 2)))
+            else:
+
+                # 1) Pending order triggers (first-hit vectorized scan).
+                still_pending: list[_PendingOrder] = []
+                filled_a_pending = False
+                for idx_po, po in enumerate(pendings):
+                    if po.side == SIDE_LONG:
+                        trigger = ca <= po.price if po.kind == KIND_LIMIT else ca >= po.price
+                    else:
+                        trigger = cb >= po.price if po.kind == KIND_LIMIT else cb <= po.price
+                    hit = np.flatnonzero(trigger)
+                    if hit.size == 0:
+                        still_pending.append(po)
+                        continue
+                    k = lo + int(hit[0])
+                    ts = int(ct[hit[0]])
+                    if po.kind == KIND_LIMIT:
+                        fill_price = float(min(ca[hit[0]], po.price)) if po.side == SIDE_LONG \
+                            else float(max(cb[hit[0]], po.price))
+                    else:
+                        fill_price = float(ca[hit[0]] + stop_slip(ts)) if po.side == SIDE_LONG \
+                            else float(cb[hit[0]] - stop_slip(ts))
+                    open_position(po.side, fill_price, ts, po.sl, po.tp, po.volume, po.tag)
+                    scan_from = max(scan_from, k + 1)
+                    filled_a_pending = True
+                    # Keep the not-yet-checked pendings alive behind the new position.
+                    still_pending.extend(pendings[idx_po + 1:])
+                    break
+                # still_pending excludes the filled order and keeps the remainder.
+                pendings = still_pending
+
+                # 2) Market/close orders after their latency window.
+                still_market: list[_MarketOrder] = []
+                for mo in markets:
+                    k_rel = int(np.searchsorted(ct, mo.target_ms, side="left"))
+                    if k_rel >= len(ct):
+                        still_market.append(mo)
+                        continue
+                    k = lo + k_rel
+                    ts = int(ct[k_rel])
+                    if mo.side == SIDE_CLOSE:
+                        if pos is not None:
+                            # Signal exits pay the market side too: long closes at
+                            # bid - slip, short closes at ask + slip.
+                            if pos.side == SIDE_LONG:
+                                price = float(cb[k_rel] - market_slip(ts))
+                            else:
+                                price = float(ca[k_rel] + market_slip(ts))
+                            close_position(price, ts, "Signal exit", mo.volume)
+                            scan_from = max(scan_from, k + 1)
+                    else:
+                        price = float(ca[k_rel] + market_slip(ts)) if mo.side == SIDE_LONG \
+                            else float(cb[k_rel] - market_slip(ts))
+                        open_position(mo.side, price, ts, mo.sl, mo.tp, mo.volume, mo.tag)
+                        scan_from = max(scan_from, k + 1)
+                markets = still_market
+
+                # 3) Manage the open position tick by tick (vectorized scans).
+                manage_position(scan_from - lo, hi - lo, ct, cb, ca)
 
             # 4) Swap at UTC-midnight rollovers while holding.
             if pos is not None and chunk_day != pos.last_swap_day:
