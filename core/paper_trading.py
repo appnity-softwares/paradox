@@ -94,9 +94,10 @@ class PaperTradingEngine:
         self.trading_days = 0
         self._day_key: str | None = None
         self._day_had_activity = False
+        self.flat_by: str | None = None   # "HH:MM" UTC — auto-close all open positions at this time
 
     # ------------------------------------------------------------------ setup
-    def start(self, strategy, cfg: StrategyConfig, symbol: str = "XAUUSD"):
+    def start(self, strategy, cfg: StrategyConfig, symbol: str = "XAUUSD", flat_by: str | None = None):
         self._strategy = strategy
         self._cfg = cfg
         self._symbol = symbol
@@ -113,6 +114,7 @@ class PaperTradingEngine:
         self.trading_days = 0
         self._day_key = None
         self._day_had_activity = False
+        self.flat_by = flat_by
         warmup = getattr(strategy, "warmup", 60)
         self._warmup_bars = int(warmup)
         return self.get_status()
@@ -360,8 +362,34 @@ class PaperTradingEngine:
             self.day_start_equity = self.equity
             self.day_pnl = 0.0
 
+    def _enforce_flat_by(self, bar_time) -> PaperTrade | None:
+        """Day-trader discipline: close everything at the flat-by time so no
+        position is held into the session end / rollover."""
+        if not self.flat_by or not self.positions:
+            return None
+        try:
+            ts = pd.Timestamp(bar_time)
+            hh, mm = (int(x) for x in str(self.flat_by).split(":")[:2])
+        except Exception:
+            return None
+        minutes = ts.hour * 60 + ts.minute
+        if minutes >= hh * 60 + mm:
+            closed = []
+            for p in list(self.positions):
+                exit_price = self._market_exit_price(p.side)
+                if exit_price is None:
+                    continue
+                t = self._close_position(p, "Flat by", exit_price)
+                if t is not None:
+                    closed.append(t)
+            return closed[-1] if closed else None
+        return None
+
     def process_bar(self, bar: dict) -> PaperTrade | None:
         self._roll_trading_day(bar.get("time"))
+        trade = self._enforce_flat_by(bar.get("time"))
+        if trade is not None:
+            return trade
         """Feed one bar (time/open/high/low/close/volume) and execute pending signals."""
         if self.kill_switch_active or self._strategy is None or self._cfg is None:
             return None

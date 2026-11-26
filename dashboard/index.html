@@ -1757,7 +1757,37 @@
               <button class="btn-primary" style="flex:1;background:#7c3aed" onclick="runFullTickReplay()">⚡ Full Tick Archive (2M+ ticks)</button>
               <button class="btn-secondary" style="flex:1" onclick="runTimeMachine()">⏱ Time Machine</button>
             </div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button class="btn-secondary" style="flex:1" onclick="entryCheck()">🎯 Entry Check (now)</button>
+            </div>
             <div id="btStatus" style="font-size:10px;color:var(--text-muted);margin-top:6px;text-align:center"></div>
+          </div>
+
+          <div class="card" id="labCard">
+            <div class="card-header"><span style="color:#a855f7">🤖 Strategy Lab — AI Agent Variant Search</span>
+              <span class="tab-badge" id="labBadge" style="background:#a855f7;color:#000">IDLE</span></div>
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:6px">
+              The optimization agent generates parameter variants, backtests each on in-sample data, then
+              validates survivors on <b>out-of-sample</b> data. IS-only winners are flagged
+              <span style="color:#e0b64f">overfit-risk</span>, not celebrated. Every run is stored.</div>
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <select id="labStrategy" class="field" style="flex:1"></select>
+              <button class="btn-primary" style="background:#a855f7" onclick="labStart()">Run Search</button>
+            </div>
+            <div id="labProgress" style="font-size:10px;color:var(--text-muted);margin-bottom:4px">No search running.</div>
+            <div style="max-height:220px;overflow-y:auto">
+              <table style="width:100%;font-size:10px;border-collapse:collapse" id="labTable">
+                <thead><tr style="color:var(--text-muted);text-align:left">
+                  <th>#</th><th>Params</th><th>Status</th><th>IS Ret %</th><th>OOS Ret %</th><th>OOS Trades</th><th></th>
+                </tr></thead>
+                <tbody id="labBody"><tr><td colspan="7" style="color:var(--text-muted)">—</td></tr></tbody>
+              </table>
+            </div>
+            <div style="margin-top:6px;font-size:10px">
+              <span style="color:var(--text-muted)">Stored runs:</span>
+              <select id="labRuns" class="field" style="max-width:55%" onchange="labLoadRun()"></select>
+              <button class="btn-secondary" onclick="labRefreshRuns()" style="padding:2px 8px">↻</button>
+            </div>
           </div>
 
           <div class="card" id="kpiCard" style="display:none">
@@ -3806,6 +3836,110 @@
       }
     }
 
+    // ── STRATEGY LAB: agent variant search, live ──
+    let labPollTimer = null;
+    function labFillStrategies() {
+      const sel = document.getElementById("labStrategy");
+      if (!sel || sel.options.length) return;
+      (window.ALL_STRATEGY_KEYS || []).forEach(k => {
+        const o = document.createElement("option"); o.value = k; o.textContent = k; sel.appendChild(o);
+      });
+    }
+    async function labStart() {
+      const strategy = document.getElementById("labStrategy").value;
+      if (!strategy) return;
+      const st = document.getElementById("labProgress");
+      try {
+        const r = await api("/api/lab/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ strategy, timeframe: "15m", bars: 8000, max_variants: 24 })
+        });
+        st.textContent = `Search ${r.run_id} started…`;
+        if (labPollTimer) clearInterval(labPollTimer);
+        labPollTimer = setInterval(labPoll, 2000);
+        labPoll();
+      } catch (e) { st.innerHTML = `<span style="color:var(--red)">⚠ ${esc(e.message)}</span>`; }
+    }
+    async function labPoll() {
+      try {
+        const s = await api("/api/lab/status");
+        const badge = document.getElementById("labBadge");
+        const st = document.getElementById("labProgress");
+        if (s.note && !s.run_id) { badge.textContent = "IDLE"; return; }
+        if (s.running) {
+          badge.textContent = `RUNNING ${s.done}/${s.total_variants}`;
+          st.innerHTML = `⏳ Testing <b>${esc(JSON.stringify(s.current_params || {}))}</b> — ${s.done}/${s.total_variants} variants done`;
+        } else {
+          badge.textContent = s.error ? "ERROR" : `DONE ${s.done}/${s.total_variants}`;
+          if (!s.error && labPollTimer) { clearInterval(labPollTimer); labPollTimer = null; labRefreshRuns(); }
+          if (s.error) st.innerHTML = `<span style="color:var(--red)">⚠ ${esc(s.error)}</span>`;
+          else if (s.summary) {
+            const sm = s.summary;
+            st.innerHTML = `✓ ${sm.verified} verified · ${sm.overfit_risk} overfit-risk · ${sm.unmeasured} unmeasured` +
+              (sm.best ? ` · best OOS: <b style="color:var(--green)">${sm.best.oos_metrics["Return %"]}%</b> ${esc(JSON.stringify(sm.best.params))}` : "");
+          }
+        }
+        if (s.results && s.results.length) labRender(s.results, null);
+      } catch (e) { /* transient */ }
+    }
+    function labRender(results, runId) {
+      const body = document.getElementById("labBody");
+      body.innerHTML = results.map((r, i) => {
+        const col = r.status === "verified" ? "var(--green)" :
+                    r.status === "overfit_risk" ? "#e0b64f" : "var(--text-muted)";
+        const is = r.is_metrics ? r.is_metrics["Return %"] : "—";
+        const oos = r.oos_metrics ? r.oos_metrics["Return %"] : "—";
+        const oosT = r.oos_metrics ? r.oos_metrics["Total Trades"] : "—";
+        const note = r.note ? `<div style="color:var(--text-muted);font-size:9px">${esc(r.note)}</div>` : "";
+        const promote = runId && r.status === "verified"
+          ? `<button class="btn-secondary" style="padding:1px 6px;font-size:9px" onclick="labPromote('${runId}',${i})">▶ paper</button>` : "";
+        return `<tr><td>${i + 1}</td><td>${esc(JSON.stringify(r.params))}</td>` +
+          `<td style="color:${col}">${r.status}</td><td>${is}</td><td style="color:${oos > 0 ? "var(--green)" : "var(--red)"}">${oos}</td>` +
+          `<td>${oosT}</td><td>${promote}</td></tr>${note ? `<tr><td colspan="7">${note}</td></tr>` : ""}`;
+      }).join("");
+    }
+    async function labRefreshRuns() {
+      try {
+        const r = await api("/api/lab/runs");
+        const sel = document.getElementById("labRuns");
+        sel.innerHTML = '<option value="">— select stored run —</option>' +
+          r.runs.map(x => `<option value="${esc(x.run_id)}">${esc(x.run_id)} (${x.verified_variants}/${x.variants} verified)</option>`).join("");
+      } catch (e) { /* transient */ }
+    }
+    async function labLoadRun() {
+      const id = document.getElementById("labRuns").value;
+      if (!id) return;
+      try {
+        const run = await api(`/api/lab/run/${encodeURIComponent(id)}`);
+        labRender(run.results || [], id);
+        document.getElementById("labProgress").textContent =
+          `Stored run ${id}: ${run.summary.verified} verified of ${run.summary.variants} variants`;
+      } catch (e) { /* transient */ }
+    }
+    async function labPromote(runId, idx) {
+      if (!confirm("Load this variant into the PAPER engine? (simulation only)")) return;
+      try {
+        const r = await api(`/api/lab/promote/${encodeURIComponent(runId)}/${idx}`, { method: "POST" });
+        alert(`Paper engine now running ${r.strategy} ${JSON.stringify(r.params)}\n(status: ${r.status})`);
+      } catch (e) { alert("Promote failed: " + e.message); }
+    }
+
+    // ── ENTRY TIMER: what does the strategy say right now? ──
+    async function entryCheck() {
+      const strategy = document.getElementById("strategy").value;
+      const st = document.getElementById("btStatus");
+      try {
+        const r = await api(`/api/entry/check?strategy=${encodeURIComponent(strategy)}&timeframe=15m`);
+        const col = r.state === "TRIGGERED" ? "var(--green)" : "#e0b64f";
+        st.innerHTML = `<div style="text-align:left"><span style="color:${col};font-weight:bold">● ${r.state}${r.side ? " " + r.side : ""}</span>` +
+          ` @ $${r.price} · last closed bar ${r.last_closed_bar}` +
+          `<br><span style="color:var(--text-muted);font-size:9px">${esc(r.note)}</span></div>`;
+      } catch (e) {
+        st.innerHTML = `<span style="color:var(--red)">⚠ ${esc(e.message)}</span>`;
+      }
+    }
+
     // ── TICK-BY-TICK VERTEX BACKTEST & RAG INTELLIGENCE ──
     async function runTickBacktest() {
       const s = document.getElementById("strategy").value;
@@ -4052,6 +4186,9 @@
         (info.strategies || []).forEach(s => {
           sSelect.innerHTML += `<option value="${esc(s)}">${esc(s)}</option>`;
         });
+        window.ALL_STRATEGY_KEYS = info.strategies || [];
+        labFillStrategies();
+        labRefreshRuns();
         renderParams();
 
         initChart();

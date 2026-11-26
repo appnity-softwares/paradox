@@ -23,6 +23,21 @@ from core.indicators import atr
 REQUIRED_COLUMNS = ("open", "high", "low", "close")
 
 
+def opening_range_mid(df: pd.DataFrame, or_bars: int) -> np.ndarray:
+    """Per-bar opening-range midpoint: (max high, min low) of the first
+    `or_bars` bars of each session day, broadcast over the whole day.
+    NaN while the range is still forming. Days are calendar days (UTC)."""
+    idx = df.index
+    day = pd.Series(idx.normalize().values, index=idx)
+    rank = day.groupby(day).cumcount()
+    oh = df["high"].where(rank < or_bars).groupby(day).transform("max")
+    ol = df["low"].where(rank < or_bars).groupby(day).transform("min")
+    mid = (oh + ol) / 2.0
+    # while the range is still forming there is no completed structure
+    mid = mid.where(rank >= or_bars)
+    return mid.to_numpy(dtype=float)
+
+
 def _validate_data(df: pd.DataFrame) -> None:
     missing = [column for column in REQUIRED_COLUMNS if column not in df.columns]
     if missing:
@@ -68,6 +83,7 @@ def run_backtest(
         signals = signals.reindex(df.index)
     sig_np = signals.fillna(0.0).to_numpy(dtype=float)
     atr_np = atr(df, 14).to_numpy(dtype=float)
+    or_mid_np = opening_range_mid(df, cfg.or_bars) if cfg.sl_method == "or_mid" else None
 
     index = df.index
     o = df["open"].to_numpy(dtype=float)
@@ -122,6 +138,8 @@ def run_backtest(
             "exit_time": index[i],
             "side": side_label,
             "entry": round(entry, 5),
+            "sl": round(sl, 5),
+            "tp": round(tp, 5),
             "exit": round(exit_price, 5),
             "units": round(units, 4),
             "pnl": round(pnl, 2),
@@ -185,11 +203,21 @@ def run_backtest(
             and trades_today < cfg.max_trades_per_day
         ):
             direction = 1 if signal > 0 else -1
-            atr_value = atr_np[i - 1]
-            if cfg.sl_method == "atr" and np.isfinite(atr_value):
-                sl_dist = cfg.sl_atr_mult * atr_value
+            if cfg.sl_method == "or_mid":
+                om = or_mid_np[i]
+                if not np.isfinite(om):
+                    continue   # opening range still forming: no structural stop
+                # the stop is where the setup failed; if the range midpoint is
+                # on the wrong side of the entry there is no trade
+                if (direction == 1 and om >= o[i]) or (direction == -1 and om <= o[i]):
+                    continue
+                sl_dist = abs(o[i] - om)
             else:
-                sl_dist = cfg.sl_fixed
+                atr_value = atr_np[i - 1]
+                if cfg.sl_method == "atr" and np.isfinite(atr_value):
+                    sl_dist = cfg.sl_atr_mult * atr_value
+                else:
+                    sl_dist = cfg.sl_fixed
             sl_dist = max(float(sl_dist), 1e-9)
 
             fill = o[i] + direction * (spread / 2 + slippage)

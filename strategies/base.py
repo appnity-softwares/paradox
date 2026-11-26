@@ -16,9 +16,10 @@ class StrategyConfig:
     # --- Risk (notebook: "Max risk per trade = 0.5% - 2%") ---
     risk_pct: float = 1.0
     # --- SL methods (notebook: "Fixed points/pips/% | structural | dynamic (ex = 1.5 X ATR)") ---
-    sl_method: str = "atr"       # "atr" | "fixed"
+    sl_method: str = "atr"       # "atr" | "fixed" | "or_mid"
     sl_atr_mult: float = 1.5
     sl_fixed: float = 5.0        # price units (USD on gold)
+    or_bars: int = 3             # bars forming the opening range (or_mid stops)
     # --- TP methods (notebook: "1:/RR | ATR expansion | fixed") ---
     rr: float = 2.0
     # --- Session filter (notebook: "Only trades = Tokyo or London or NY or Sydney session") ---
@@ -31,8 +32,10 @@ class StrategyConfig:
     def __post_init__(self):
         if not 0 < self.risk_pct <= 3.0:
             raise ValueError("risk_pct must be > 0 and <= 3")
-        if self.sl_method not in {"atr", "fixed"}:
-            raise ValueError("sl_method must be 'atr' or 'fixed'")
+        if self.sl_method not in {"atr", "fixed", "or_mid"}:
+            raise ValueError("sl_method must be 'atr', 'fixed' or 'or_mid'")
+        if not 1 <= int(self.or_bars) <= 96:
+            raise ValueError("or_bars must be between 1 and 96")
         if self.sl_atr_mult <= 0 or self.sl_fixed <= 0:
             raise ValueError("stop-loss distance must be positive")
         if self.rr <= 0:

@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from core.backtest import _validate_data
+from core.backtest import _validate_data, opening_range_mid
 from core.config import get_cost_model, get_symbol_spec
 
 DEFAULT_TICK_DIR = Path("data/ticks/XAUUSD")
@@ -122,6 +122,7 @@ def run_tick_replay(
 
     from core.indicators import atr
     atr_np = atr(df, 14).to_numpy(dtype=float)
+    or_mid_np = opening_range_mid(df, cfg.or_bars) if cfg.sl_method == "or_mid" else None
     n = len(df)
     if n < 3:
         raise ValueError("need at least 3 bars")
@@ -259,28 +260,41 @@ def run_tick_replay(
             and (trade_start is None or index[i] >= trade_start)
         ):
             direction = 1 if sig > 0 else -1
-            atr_value = atr_np[i - 1]
-            if cfg.sl_method == "atr" and np.isfinite(atr_value):
-                sl_dist = cfg.sl_atr_mult * atr_value
-            else:
-                sl_dist = cfg.sl_fixed
-            sl_dist = max(float(sl_dist), 1e-9)
-
             sane = spread_ceiling is None or (ask_w[0] - bid_w[0]) <= spread_ceiling
-            if sane:
-                fill = (ask_w[0] if direction == 1 else bid_w[0]) + direction * slippage
-                risk_amount = equity * cfg.risk_pct / 100.0
-                units = risk_amount / sl_dist
-                pos = direction
-                side_label = "LONG" if direction == 1 else "SHORT"
-                entry = fill
-                sl = entry - direction * sl_dist
-                tp = entry + direction * sl_dist * cfg.rr
-                entry_time = index[i]
-                entry_fee = abs(units) * commission_per_oz
-                trades_today += 1
-            else:
+            if not sane:
                 cov.entries_skipped_no_tick += 1
+            else:
+                raw_fill = ask_w[0] if direction == 1 else bid_w[0]
+                if cfg.sl_method == "or_mid":
+                    om = or_mid_np[i]
+                    # range still forming, or the structural stop sits on the
+                    # wrong side of the real fill: no trade
+                    if np.isfinite(om) and (
+                        (direction == 1 and om < raw_fill) or (direction == -1 and om > raw_fill)
+                    ):
+                        sl_dist = abs(raw_fill - om)
+                        sl = om
+                    else:
+                        sl_dist = None
+                else:
+                    atr_value = atr_np[i - 1]
+                    if cfg.sl_method == "atr" and np.isfinite(atr_value):
+                        sl_dist = cfg.sl_atr_mult * atr_value
+                    else:
+                        sl_dist = cfg.sl_fixed
+                    sl_dist = max(float(sl_dist), 1e-9)
+                    sl = raw_fill - direction * sl_dist
+                if sl_dist is not None:
+                    fill = raw_fill + direction * slippage
+                    risk_amount = equity * cfg.risk_pct / 100.0
+                    units = risk_amount / sl_dist
+                    pos = direction
+                    side_label = "LONG" if direction == 1 else "SHORT"
+                    entry = fill
+                    tp = entry + direction * sl_dist * cfg.rr
+                    entry_time = index[i]
+                    entry_fee = abs(units) * commission_per_oz
+                    trades_today += 1
 
         # 3) stop / target scan over the window's ticks (vectorized)
         if pos != 0 and t_w is not None and len(t_w):

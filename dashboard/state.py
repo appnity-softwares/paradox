@@ -47,6 +47,7 @@ from core.prop_firm_simulator import (
     PropFirmProfile,
 )  # noqa: E402
 from core.vertex_store import VERTEX_STORE  # noqa: E402
+from core.strategy_lab import StrategyLab  # noqa: E402
 from core.tick_backtest import TICK_BACKTEST_ENGINE  # noqa: E402
 from core.rag_engine import MARKET_RAG_ENGINE  # noqa: E402
 from dataclasses import asdict
@@ -74,7 +75,7 @@ MARKET_BROADCASTER = MarketBroadcaster()
 
 Timeframe = Literal["1m", "2m", "5m", "15m", "30m", "1h", "4h", "1d"]
 SessionName = Literal["all", "tokyo", "london", "ny", "london_ny"]
-StopMethod = Literal["atr", "fixed"]
+StopMethod = Literal["atr", "fixed", "or_mid"]
 async def _risk_engine_handler(message: AgentMessage) -> AgentMessage | None:
     """Handle risk check requests from agents."""
     payload = message.payload
@@ -233,6 +234,7 @@ RISK_ENGINE = RiskEngine(max_risk_pct=2.0, max_daily_loss_pct=5.0, max_leverage=
 EXECUTION_ENGINE = ExecutionEngine(broker_connector=None)  # simulation/paper mode
 OPTIMIZATION_ENGINE = OptimizationEngine()
 PAPER_ENGINE = PaperTradingEngine()
+STRATEGY_LAB = StrategyLab(fetch_market_data, ALL_STRATEGIES)
 
 # Selected prop-firm ruleset (None = no prop-firm guard active).
 PROP_FIRM_SELECTION: dict = {"slug": None, "phase_index": 0}
@@ -350,6 +352,7 @@ class BacktestReq(BaseModel):
     sl_method: StopMethod = "atr"
     sl_atr_mult: float = Field(1.5, ge=0.1, le=10.0)
     sl_fixed: float = Field(5.0, gt=0, le=1000.0)
+    or_bars: int = Field(3, ge=1, le=96)
     session: SessionName = "all"
     max_trades_per_day: int = Field(4, ge=1, le=50)
     daily_loss_limit_pct: float = Field(3.0, ge=0.1, le=20.0)
@@ -372,9 +375,11 @@ class PaperReplayReq(BaseModel):
     sl_method: StopMethod = "atr"
     sl_atr_mult: float = 1.5
     sl_fixed: float = 5.0
+    or_bars: int = Field(3, ge=1, le=96)
     session: SessionName = "all"
     max_trades_per_day: int = 4
     daily_loss_limit_pct: float = 3.0
+    flat_by: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
 import logging  # noqa: E402
 logger = logging.getLogger("dashboard")
 async def _paper_feed_loop():
@@ -480,6 +485,7 @@ class TickReplayReq(BaseModel):
     sl_method: StopMethod = "atr"
     sl_atr_mult: float = Field(1.5, ge=0.1, le=10.0)
     sl_fixed: float = Field(5.0, gt=0, le=1000.0)
+    or_bars: int = Field(3, ge=1, le=96)
     session: SessionName = "all"
     max_trades_per_day: int = Field(4, ge=1, le=50)
     daily_loss_limit_pct: float = Field(3.0, ge=0.1, le=20.0)

@@ -49,6 +49,8 @@ app.include_router(platform_router.router)
 app.include_router(charts_router.router)
 app.include_router(replay_router.router)
 app.include_router(propfirm_router.router)
+from dashboard.routers import lab as lab_router
+app.include_router(lab_router.router)
 
 
 PAGE_FILES = {"terminal": "terminal.html", "client": "client.html",

@@ -105,13 +105,14 @@ def paper_replay(req: PaperReplayReq):
         sl_method=req.sl_method,
         sl_atr_mult=req.sl_atr_mult,
         sl_fixed=req.sl_fixed,
+        or_bars=req.or_bars,
         session=req.session,
         max_trades_per_day=req.max_trades_per_day,
         daily_loss_limit_pct=req.daily_loss_limit_pct,
     )
     strategy = ALL_STRATEGIES[req.strategy](cfg, **params)
     engine = PAPER_ENGINE
-    engine.start(strategy, cfg, "XAUUSD")
+    engine.start(strategy, cfg, "XAUUSD", flat_by=req.flat_by)
     result = engine.replay(snapshot.data)
     return {
         "result": result,
@@ -132,12 +133,13 @@ async def paper_start(req: PaperReplayReq):
         sl_method=req.sl_method,
         sl_atr_mult=req.sl_atr_mult,
         sl_fixed=req.sl_fixed,
+        or_bars=req.or_bars,
         session=req.session,
         max_trades_per_day=req.max_trades_per_day,
         daily_loss_limit_pct=req.daily_loss_limit_pct,
     )
     strategy = ALL_STRATEGIES[req.strategy](cfg, **params)
-    PAPER_ENGINE.start(strategy, cfg, "XAUUSD")
+    PAPER_ENGINE.start(strategy, cfg, "XAUUSD", flat_by=req.flat_by)
     task = asyncio.create_task(_paper_feed_loop())
     PAPER_TASK["task"] = task
     return {"started": True, "strategy": req.strategy, "timeframe": req.timeframe, "task_id": task.get_name()}
