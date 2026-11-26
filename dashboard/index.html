@@ -2462,7 +2462,7 @@
       smc_liquidity_sweep: { lookback: 20, sweep_buffer: 0.2 }
     };
 
-    const METRIC_COLS = ["Total Return %", "Win Rate %", "Profit Factor", "Sharpe Ratio", "Max Drawdown %", "Total Trades", "Avg Trade %", "Expectancy $", "Exposure %"];
+    const METRIC_COLS = ["Return %", "Win Rate %", "Profit Factor", "Sharpe", "Max DD %", "Total Trades", "RR (realized)", "Net P&L $", "Expectancy $", "Max Trades/Day"];
 
     function esc(s) { return String(s || "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[m])); }
     function pad(n) { return String(n).padStart(2, '0'); }
@@ -3551,10 +3551,10 @@
 
     function renderBacktestResult(data) {
       const m = data.metrics || {};
-      const profit = m["Total Return %"] || 0;
+      const profit = m["Return %"] || 0;
       const winRate = m["Win Rate %"] || 0;
       const pf = m["Profit Factor"] || 0;
-      const dd = m["Max Drawdown %"] || 0;
+      const dd = m["Max DD %"] || 0;
 
       document.getElementById("kpiCard").style.display = "block";
       document.getElementById("kpiProfit").textContent = (profit >= 0 ? "+" : "") + Number(profit).toFixed(2) + "%";

@@ -1593,8 +1593,8 @@ async function runBacktest() {
       ? `✓ Done — ${(r.result.coverage.ticks_scanned || 0).toLocaleString()} ticks, real bid/ask fills`
       : '✓ Done';
     const m = r.metrics || {};
-    const cols = ['Total Return %', 'Win Rate %', 'Profit Factor', 'Sharpe Ratio',
-                  'Max Drawdown %', 'Total Trades'];
+    const cols = ['Return %', 'Win Rate %', 'Profit Factor', 'Sharpe',
+                  'Max DD %', 'Total Trades', 'RR (realized)', 'Net P&L $'];
     $('bt-metric-cards').innerHTML = cols.map(c =>
       `<div class="stat"><div class="k">${esc(c)}</div><div class="v mono">${
         typeof m[c] === 'number' ? m[c].toFixed(2) : esc(m[c] ?? '—')}</div></div>`).join('');
@@ -1750,8 +1750,8 @@ async function runBuilder() {
         folds: parseInt($('ai-folds').value) || 4})});
     $('ai-status').textContent = '✓ Done';
     const m = r.metrics || {};
-    const cols = ['Total Return %', 'Win Rate %', 'Profit Factor', 'Sharpe Ratio',
-                  'Max Drawdown %', 'Total Trades'];
+    const cols = ['Return %', 'Win Rate %', 'Profit Factor', 'Sharpe',
+                  'Max DD %', 'Total Trades', 'RR (realized)', 'Net P&L $'];
     $('ai-metrics').innerHTML = cols.map(c =>
       `<div class="stat"><div class="k">${esc(c)}</div><div class="v mono">${
         typeof m[c] === 'number' ? m[c].toFixed(2) : esc(m[c] ?? '—')}</div></div>`).join('');
