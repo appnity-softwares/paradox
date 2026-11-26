@@ -101,16 +101,30 @@ class MacMT5Broker(DataProvider):
         df = df[["open", "high", "low", "close", "volume"]].astype(float)
         
         # Bridge to current live quote if newer than latest bar on disk —
-        # only when the tick actually belongs to this symbol.
+        # only when the tick actually belongs to this symbol. The live tick
+        # must become the CURRENT FORMING BAR on the timeframe grid, never a
+        # phantom bar stamped with wall-clock time: a misaligned last bar
+        # poisons session filters, tick-replay windows and "last closed bar"
+        # reporting downstream.
         if self._last_tick and self._last_tick_symbol == symbol.upper():
             p = float(self._last_tick.get("last") or self._last_tick.get("bid", 0.0))
             t_now = self._last_tick.get("time") or datetime.now(timezone.utc)
-            if p > 0 and t_now > df.index[-1]:
+            tf_minutes = {"1m": 1, "2m": 2, "5m": 5, "15m": 15, "30m": 30,
+                          "1h": 60, "4h": 240, "1d": 1440}.get(timeframe.lower(), 15)
+            t_bar = pd.Timestamp(t_now).floor(f"{tf_minutes}min")
+            if p > 0 and t_bar > df.index[-1]:
+                # gap between disk data and now: append the forming bar
                 live_row = pd.DataFrame([{
                     "open": p, "high": p, "low": p, "close": p,
                     "volume": float(self._last_tick.get("volume", 1.0))
-                }], index=[t_now])
+                }], index=[t_bar])
                 df = pd.concat([df, live_row])
+            elif p > 0 and t_bar == df.index[-1]:
+                # merge the live tick into the forming bar on disk
+                last = df.index[-1]
+                df.iloc[-1, df.columns.get_loc("high")] = max(float(df.iloc[-1]["high"]), p)
+                df.iloc[-1, df.columns.get_loc("low")] = min(float(df.iloc[-1]["low"]), p)
+                df.iloc[-1, df.columns.get_loc("close")] = p
 
         return df.tail(bars)
 

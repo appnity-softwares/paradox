@@ -175,7 +175,7 @@ async def agent_performance_analyst(req: AgentMessageReq):
 
 @router.post("/api/ai/chat")
 async def ai_chat(req: AIChatReq):
-    """Interactive Quantitative Trading Copilot inspired by roboquant.dev."""
+    """Interactive Quantitative Trading Copilot."""
     user_msg = req.message.strip()
     ctx = req.context or {}
     strat = ctx.get("strategy", "ema_cross")
@@ -275,7 +275,7 @@ async def ai_chat(req: AIChatReq):
         )
     else:
         reply = (
-            f"### 🤖 AI Quant Copilot Ready (roboquant mode)\n\n"
+            f"### 🤖 AI Quant Copilot Ready\n\n"
             f"I am monitoring XAUUSD at `${last_p:.2f}` with strategy `{strat}` ({tf}).\n\n"
             f"Ask me anything about:\n"
             f"- **Strategy Diagnostics:** *'Analyze my strategy performance'* or *'Why did my trade lose?'*\n"
