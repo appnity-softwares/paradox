@@ -463,7 +463,9 @@
     <p class="page-sub">Describe a strategy in plain English and the AI builds and tests it — or run a classic backtest yourself.</p>
 
     <div class="card">
-      <h3>AI strategy builder</h3>
+      <h3 style="display:flex;justify-content:space-between;align-items:center">
+        <span>AI strategy builder</span>
+        <span class="muted" id="ai-provider-badge" style="font-size:11px">AI: checking…</span></h3>
       <div class="fields" style="grid-template-columns:1fr 150px 110px">
         <div><label>Describe your strategy</label>
           <input id="ai-text" placeholder="e.g. EMA 20/50 crossover with ATR stop loss, london session, 1% risk"
@@ -1737,6 +1739,22 @@ async function labInit() {
   } catch (e) { /* transient */ }
   labRuns();
 }
+
+async function loadAiProvider() {
+  const badge = $('ai-provider-badge');
+  if (!badge) return;
+  try {
+    const c = await api('/api/platform/admin/config');
+    if (c.ai_key_set) {
+      badge.textContent = `AI: Gemini key set (${c.ai_key_source})`;
+      badge.style.color = 'var(--green)';
+    } else {
+      badge.textContent = 'AI: rule-based fallback — no Gemini key set';
+      badge.style.color = '#e0b64f';
+    }
+  } catch (e) { badge.textContent = 'AI: ?'; }
+}
+loadAiProvider();
 
 /* ── AI strategy builder ───────────────────────────────── */
 async function runBuilder() {

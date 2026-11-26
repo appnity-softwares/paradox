@@ -9,6 +9,12 @@ from __future__ import annotations
 import os
 import sys
 
+from dotenv import load_dotenv
+
+# .env is the project's config convention (GEMINI_API_KEY, MT5_*); load it
+# before anything reads os.getenv. Real environment variables still win.
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse

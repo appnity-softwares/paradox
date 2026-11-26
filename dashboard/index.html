@@ -1480,7 +1480,8 @@
     </div>
 
     <div class="topbar-right">
-      <select id="adminPropFirmSelect" title="Prop firm rules (UNVERIFIED data — confirm on the firm's site)" style="background:#14161c;color:#e8e8e8;border:1px solid #2a2e38;border-radius:6px;padding:5px 8px;font-size:11px">
+      <span id="aiProviderPill" style="font-size:10px;color:#e0b64f;margin-right:8px">AI: …</span>
+              <select id="adminPropFirmSelect" title="Prop firm rules (UNVERIFIED data — confirm on the firm's site)" style="background:#14161c;color:#e8e8e8;border:1px solid #2a2e38;border-radius:6px;padding:5px 8px;font-size:11px">
         <option value="">Prop firm: none</option>
       </select>
       <button class="btn-chip" onclick="openCopilot()">Copilot</button>
@@ -3852,6 +3853,22 @@
         st.innerHTML = `<span style="color:var(--red)">⚠ ${esc(e.message)}</span>`;
       }
     }
+
+    async function loadAiProvider() {
+      const el = document.getElementById("aiProviderPill");
+      if (!el) return;
+      try {
+        const c = await api("/api/platform/admin/config");
+        if (c.ai_key_set) {
+          el.textContent = `AI: Gemini key set (${c.ai_key_source})`;
+          el.style.color = "var(--green)";
+        } else {
+          el.textContent = "AI: rule-based fallback (no Gemini key)";
+          el.style.color = "#e0b64f";
+        }
+      } catch (e) { el.textContent = "AI: ?"; }
+    }
+    loadAiProvider();
 
     // ── STRATEGY LAB: agent variant search, live ──
     let labPollTimer = null;
