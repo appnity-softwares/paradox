@@ -1569,7 +1569,7 @@
         </div>
       </div>
 
-      <!-- TradingView Style Duration Bar -->
+      <!-- Duration Bar -->
       <div class="tv-duration-bar">
         <div class="duration-pills">
           <button class="dpill" onclick="setTimeDuration('1D', this)">1D</button>
@@ -1723,6 +1723,10 @@
                 style="color:var(--accent);font-size:9px">PRO</span></div>
             <div class="field"><label>Strategy Model</label><select id="strategy" onchange="renderParams()"></select>
             </div>
+            <div class="field"><label>Execution Model</label><select id="btMode" onchange="renderBtMode()">
+                <option value="candle">Candle (bar open fills)</option>
+                <option value="tick">⚡ Per-Tick (real bid/ask, full archive)</option>
+              </select></div>
             <div id="paramBox"></div>
             <div class="grid-2">
               <div class="field"><label>Risk % / Trade</label><input id="risk" value="1.0"></div>
@@ -1732,6 +1736,7 @@
               <div class="field"><label>SL Method</label><select id="sl">
                   <option value="atr">ATR</option>
                   <option value="fixed">Fixed</option>
+                  <option value="or_mid">OR Mid (structural)</option>
                 </select></div>
               <div class="field"><label>ATR Multiplier</label><input id="slmult" value="1.5"></div>
             </div>
@@ -1760,6 +1765,7 @@
             <div style="display:flex;gap:6px;margin-top:6px">
               <button class="btn-secondary" style="flex:1" onclick="entryCheck()">🎯 Entry Check (now)</button>
             </div>
+            <div id="btModeNote" style="font-size:9px;color:var(--text-muted);margin-top:4px">Fills at next bar open ± half spread. Fast, but blind to intra-bar path.</div>
             <div id="btStatus" style="font-size:10px;color:var(--text-muted);margin-top:6px;text-align:center"></div>
           </div>
 
@@ -1997,11 +2003,11 @@
           </div>
         </div>
 
-        <!-- 2. ROBOQUANT AI COPILOT TAB -->
+        <!-- 2. AI COPILOT TAB -->
         <div class="spanel" id="panel-copilot">
           <div class="card">
             <div class="card-header"><span>Institutional AI Copilot</span><span
-                style="color:var(--accent);font-size:8.5px">roboquant.dev</span></div>
+                style="color:var(--accent);font-size:8.5px">Paradox</span></div>
             <div style="font-size:9.5px;color:var(--text-muted);margin-bottom:8px">Ask the AI Copilot to analyze trade
               losses, optimize stop-losses, or evaluate current market regime.</div>
             <div class="quick-chips">
@@ -2475,7 +2481,7 @@
     function initChart() {
       const c = document.getElementById("chartContainer");
       chart = LightweightCharts.createChart(c, {
-        layout: { background: { type: "solid", color: "#0a0d13" }, textColor: "#67707d", fontFamily: "JetBrains Mono, monospace", fontSize: 10 },
+        layout: { background: { type: "solid", color: "#0a0d13" }, textColor: "#67707d", fontFamily: "JetBrains Mono, monospace", fontSize: 10, attributionLogo: false },
         grid: { vertLines: { color: "rgba(255,255,255,0.035)" }, horzLines: { color: "rgba(255,255,255,0.035)" } },
         crosshair: {
           mode: LightweightCharts.CrosshairMode.Normal,
@@ -2549,7 +2555,7 @@
 
     function activeSeries() { return chartType === "bar" ? barSeries : chartType === "line" ? lineSeries : candleSeries; }
 
-    // ── TRADINGVIEW TIME PERIOD DURATION ENGINE ──
+    // ── TIME PERIOD DURATION ENGINE ──
     function setTimeDuration(period, el) {
       if (el) {
         document.querySelectorAll(".dpill").forEach(b => b.classList.remove("active"));
@@ -2610,7 +2616,7 @@
     function makeSubChart(id) {
       const c = document.getElementById(id);
       const sc = LightweightCharts.createChart(c, {
-        layout: { background: { type: "solid", color: "#070a0f" }, textColor: "#94a3b8", fontFamily: "JetBrains Mono", fontSize: 9 },
+        layout: { background: { type: "solid", color: "#070a0f" }, textColor: "#94a3b8", fontFamily: "JetBrains Mono", fontSize: 9, attributionLogo: false },
         grid: { vertLines: { color: "rgba(255,255,255,0.04)" }, horzLines: { color: "rgba(255,255,255,0.04)" } },
         rightPriceScale: { borderColor: "rgba(255,255,255,0.08)" },
         timeScale: { visible: false }, crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
@@ -3209,7 +3215,7 @@
       }
     }
 
-    // ── ROBOQUANT AI COPILOT CHAT ──
+    // ── AI COPILOT CHAT ──
     function openCopilot() {
       document.querySelector('[data-panel="copilot"]').click();
     }
@@ -3504,7 +3510,15 @@
       document.getElementById("paramBox").innerHTML = h;
     }
 
+    function renderBtMode() {
+      const m = document.getElementById("btMode").value;
+      const note = document.getElementById("btModeNote");
+      if (note) note.textContent = m === "tick"
+        ? "Fills at real recorded bid/ask — stop gaps fill worse, targets at level or better."
+        : "Fills at next bar open ± half spread. Fast, but blind to intra-bar path.";
+    }
     async function runBacktest() {
+      if (document.getElementById("btMode")?.value === "tick") { await runFullTickReplay(); return; }
       const s = document.getElementById("strategy").value;
       const def = DEF_PARAMS[s] || {};
       const params = {};
@@ -3772,7 +3786,10 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             strategy: s, risk_pct: risk,
-            sl_method: "fixed", sl_fixed: slfixed, rr: rr,
+            sl_method: document.getElementById("sl").value,
+            sl_atr_mult: parseFloat(document.getElementById("slmult").value) || 1.5,
+            sl_fixed: slfixed,
+            or_bars: 3, rr: rr,
             bars: 2000
           })
         });

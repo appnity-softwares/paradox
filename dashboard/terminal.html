@@ -180,7 +180,7 @@
               padding: 5px 14px; font-size: 12px; font-family: ui-monospace, Menlo, monospace;
               border-bottom: 1px solid #121924; }
   .tape-h { color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
-  /* ── indicators menu (TradingView-style) ── */
+  /* ── indicators menu () ── */
   .ind-wrap { position: relative; }
   .ind-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
              border-radius: 7px; font-size: 12.5px; font-weight: 600;
@@ -1005,11 +1005,11 @@ async function closeAll() {
   } catch (e) { alert('Close-all failed: ' + e.message); }
 }
 
-/* ── charts (TradingView Lightweight Charts) ──────────── */
+/* ── charts (lightweight-charts) ──────────── */
 let chartTf = '15m';
 let chartType = 'candles';
 let logScale = false;
-/* ── indicator instances (TradingView-style) ─────────────
+/* ── indicator instances () ─────────────
    Every indicator is an instance with its own params + colour.
    The same type can be added multiple times (e.g. EMA 20 + EMA 50). */
 const IND_CATALOG = {
@@ -1169,6 +1169,7 @@ function initChart() {
     grid: {vertLines: {color: '#151d29'}, horzLines: {color: '#151d29'}},
     rightPriceScale: {borderColor: '#1f2a38'},
     timeScale: {borderColor: '#1f2a38', timeVisible: true, secondsVisible: false},
+    layout: { attributionLogo: false },
     crosshair: {mode: LightweightCharts.CrosshairMode.Normal},
   });
   try {
@@ -1381,7 +1382,7 @@ async function loadMarkers() {
   } catch (e) {}
 }
 
-/* ── TradingView-style range selector ──────────────────── */
+/* ── range selector ──────────────────── */
 const RANGE_BARS = {   // bars back from the newest candle, per timeframe
   '1D':  {'15m': 96,  '1m': 1440, '30m': 48, '1h': 24, '4h': 6,  '1d': 1},
   '5D':  {'15m': 480, '1m': 7200, '30m': 240, '1h': 120, '4h': 30, '1d': 5},

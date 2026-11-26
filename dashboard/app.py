@@ -68,7 +68,7 @@ def index():
 
 @app.get("/vendor/lightweight-charts.js")
 def vendor_lwcharts():
-    """Vendored TradingView Lightweight Charts (Apache-2.0)."""
+    """Vendored lightweight-charts library (Apache-2.0, TradingView Inc.)."""
     return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      "vendor", "lightweight-charts.js"),
                         media_type="application/javascript")
