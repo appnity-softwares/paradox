@@ -232,6 +232,15 @@
   .ind-settings .row-btns button.apply { background: var(--accent-soft); color: var(--accent);
                                          border-color: rgba(212,168,67,.4); font-weight: 650; }
   .ind-settings .row-btns button:hover { color: var(--text); }
+  .replay-box { background: var(--surface-2); border: 1px solid var(--border);
+                border-radius: 8px; padding: 9px 10px; font-size: 11.5px; }
+  .replay-box .odds-row { display: flex; align-items: center; gap: 7px; margin: 4px 0; }
+  .replay-box .odds-row .lbl { width: 58px; color: var(--text-dim); font-size: 10.5px; }
+  .replay-box .bar { flex: 1; height: 9px; background: var(--surface); border-radius: 4px; overflow: hidden; }
+  .replay-box .bar span { display: block; height: 100%; border-radius: 4px; }
+  .replay-box .pct { width: 40px; text-align: right; font-family: ui-monospace, Menlo, monospace; }
+  .replay-box .verdict { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border);
+                         color: var(--text-dim); font-size: 10.5px; line-height: 1.45; }
   #chart-legend { top: 30px; }
   @media (max-width: 1100px) { .ws { grid-template-columns: 1fr; } }
   @media (max-width: 720px) { main { padding: 16px 12px 50px; } header { padding: 0 12px; } }
@@ -392,6 +401,10 @@
                 <option>0.01</option><option>0.05</option><option selected>0.10</option>
                 <option>0.25</option><option>0.50</option><option>1.00</option>
               </select></div>
+            <div><label>Side</label>
+              <select id="od-side" style="padding:6px 8px;font-size:12.5px">
+                <option value="buy">BUY</option><option value="sell">SELL</option>
+              </select></div>
             <div><label>Risk mode</label>
               <select id="od-mode" style="padding:6px 8px;font-size:12.5px">
                 <option value="paper">Paper</option>
@@ -406,6 +419,11 @@
           <div style="height:8px"></div>
           <button class="big-btn buy" onclick="sendOrder('BUY')">
             <span class="lbl">BUY · ASK</span><span id="btn-ask">—</span></button>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn" style="flex:1;padding:6px;font-size:11.5px" onclick="suggestStops()" title="ATR-based stop + 2R target">⚡ Suggest SL/TP</button>
+            <button class="btn" style="flex:1;padding:6px;font-size:11.5px" onclick="replayTrade()" title="Monte Carlo odds from real bars">⏱ Replay odds</button>
+          </div>
+          <div id="od-replay" style="margin-top:8px;display:none"></div>
           <div class="muted" id="od-feedback" style="margin-top:8px"></div>
         </div>
         <div class="ws-title"><span>Positions</span><span id="pos-badge" class="badge grey">0</span></div>
@@ -1334,6 +1352,60 @@ function setRange(r, btn) {
   if (!bars.length) { TV.timeScale().fitContent(); return; }
   TV.timeScale().setVisibleLogicalRange({
     from: chartData.length - bars.length, to: chartData.length + 2});
+}
+
+/* ── Time Machine: replay odds + SL/TP suggestor ───────── */
+async function replayTrade() {
+  const box = $('od-replay');
+  const side = $('od-side')?.value || 'buy';
+  const px = Number(quotes[activeSymbol]?.price || 0);
+  if (!px) { box.style.display = ''; box.innerHTML = '<div class="replay-box">No live quote yet.</div>'; return; }
+  const sl = parseFloat($('od-sl').value) || 0;
+  const tp = parseFloat($('od-tp').value) || 0;
+  if (sl <= 0 || tp <= 0) {
+    box.style.display = '';
+    box.innerHTML = '<div class="replay-box">Set SL and TP distances first — replay needs a full plan.</div>';
+    return;
+  }
+  const entry = side === 'buy' ? px : px;
+  const stop = side === 'buy' ? entry - sl : entry + sl;
+  const target = side === 'buy' ? entry + tp : entry - tp;
+  box.style.display = '';
+  box.innerHTML = '<div class="replay-box">Replaying ' + activeSymbol + ' from its own real bars…</div>';
+  try {
+    const r = await api('/api/replay', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({symbol: activeSymbol, timeframe: chartTf === '1m' ? '1m' : '15m',
+        side, entry, stop, target, horizon_bars: 16, replays: 2000})});
+    const pctT = (r.odds_target * 100).toFixed(1), pctS = (r.odds_stop * 100).toFixed(1),
+          pctN = (r.odds_neither * 100).toFixed(1);
+    box.innerHTML =
+      `<div class="replay-box">` +
+      `<div style="font-weight:650;margin-bottom:5px">Time Machine · ${r.replays.toLocaleString()} replays · next ${r.horizon_bars} bars</div>` +
+      `<div class="odds-row"><span class="lbl">Target</span><span class="bar"><span style="width:${pctT}%;background:var(--green)"></span></span><span class="pct">${pctT}%</span></div>` +
+      `<div class="odds-row"><span class="lbl">Stop</span><span class="bar"><span style="width:${pctS}%;background:var(--red)"></span></span><span class="pct">${pctS}%</span></div>` +
+      `<div class="odds-row"><span class="lbl">Open</span><span class="bar"><span style="width:${pctN}%;background:var(--text-faint)"></span></span><span class="pct">${pctN}%</span></div>` +
+      `<div style="margin-top:6px;color:var(--text-dim)">Avg <b style="color:${r.avg_r >= 0 ? 'var(--green)' : 'var(--red)'}">${r.avg_r >= 0 ? '+' : ''}${r.avg_r}R</b>` +
+      ` · close range ${Number(r.p05_close).toFixed(2)} – ${Number(r.p95_close).toFixed(2)}</div>` +
+      `<div class="verdict">⚠ ${r.verdict}<br>Simulated from ${r.bars_used} real bars, ${r.days_used} days (${r.provider}) — odds, not a prediction.</div>` +
+      `</div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="replay-box"><span class="down">✗ ${esc(e.message)}</span></div>`;
+  }
+}
+
+async function suggestStops() {
+  const side = $('od-side')?.value || 'buy';
+  const px = Number(quotes[activeSymbol]?.price || 0);
+  const fb = $('od-feedback');
+  if (!px) { fb.innerHTML = '<span class="down">No live quote yet.</span>'; return; }
+  try {
+    const r = await api('/api/suggest-stops', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({symbol: activeSymbol, timeframe: '15m', side, entry: px, atr_mult: 1.5, r_multiple: 2.0})});
+    const slDist = Math.abs(px - r.stop), tpDist = Math.abs(r.target - px);
+    $('od-sl').value = slDist.toFixed(2);
+    $('od-tp').value = tpDist.toFixed(2);
+    fb.innerHTML = `<span class="up">⚡ ATR(14) ${r.atr} × ${r.atr_mult} → SL ${slDist.toFixed(2)} / TP ${tpDist.toFixed(2)} (${r.r_multiple}R, risk ${r.risk_pct}%)</span>`;
+  } catch (e) { fb.innerHTML = `<span class="down">✗ ${esc(e.message)}</span>`; }
 }
 
 /* ── panel collapse (more chart, TV-style) ─────────────── */

@@ -25,6 +25,7 @@ from dashboard.routers import execution as execution_router  # noqa: E402
 from dashboard.routers import mt5 as mt5_router  # noqa: E402
 from dashboard.routers import research as research_router  # noqa: E402
 from dashboard.routers import platform as platform_router  # noqa: E402
+from dashboard.routers import replay as replay_router  # noqa: E402
 from dashboard.routers import charts as charts_router  # noqa: E402
 
 app = FastAPI(title="AI Quant Terminal", version="0.4.0")
@@ -45,6 +46,7 @@ app.include_router(execution_router.router)
 app.include_router(research_router.router)
 app.include_router(platform_router.router)
 app.include_router(charts_router.router)
+app.include_router(replay_router.router)
 
 
 PAGE_FILES = {"terminal": "terminal.html", "client": "client.html",
