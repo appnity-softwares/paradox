@@ -32,7 +32,16 @@ from abc import ABC, abstractmethod
 import httpx
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
+DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite"
+# Google retires models without notice (gemini-2.0-flash started 404-ing in
+# Nov 2026). Try the configured model first, then these, so the LLM layer
+# degrades gracefully instead of silently falling back to regex parsing.
+FALLBACK_MODELS = [
+    "gemini-flash-latest",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-pro-preview",
+]
 
 SYSTEM_PROMPT = (
     "You are the strategy spec generator for an AI quantitative trading platform "
@@ -62,37 +71,57 @@ class GeminiLLM(BaseLLM):
     def __init__(self, api_key: str | None = None, model: str | None = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or ""
         self.model = model or os.getenv("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
+        self.last_error: str | None = None
 
     def is_available(self) -> bool:
         return bool(self.api_key)
 
+    def _call(self, model: str, text: str) -> httpx.Response:
+        return httpx.post(
+            f"{GEMINI_BASE}/{model}:generateContent",
+            params={"key": self.api_key},
+            json={
+                "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+                "contents": [{"role": "user", "parts": [{"text": text}]}],
+                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1200},
+            },
+            timeout=45.0,
+        )
+
     def generate_spec(self, text: str) -> dict | None:
         if not self.api_key:
+            self.last_error = "no api key"
             return None
-        try:
-            resp = httpx.post(
-                f"{GEMINI_BASE}/{self.model}:generateContent",
-                params={"key": self.api_key},
-                json={
-                    "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-                    "contents": [{"role": "user", "parts": [{"text": text}]}],
-                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1200},
-                },
-                timeout=45.0,
-            )
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            out_text = ""
-            for part in data.get("candidates") or []:
-                for p in part.get("content", {}).get("parts") or []:
-                    out_text += p.get("text") or ""
-            spec = json.loads(out_text)
-            if not isinstance(spec, dict) or not spec.get("strategy"):
-                return None
-            return spec
-        except Exception:
-            return None
+        last_err = "unknown error"
+        for model in [self.model] + FALLBACK_MODELS:
+            try:
+                resp = self._call(model, text)
+                if resp.status_code == 404:
+                    last_err = f"{model}: retired/unavailable"
+                    continue
+                if resp.status_code in (429, 503):
+                    last_err = f"{model}: {resp.json().get('error', {}).get('message', 'unavailable')[:80]}"
+                    continue
+                if resp.status_code == 402:
+                    self.last_error = "credits depleted (402)"
+                    return None
+                if resp.status_code != 200:
+                    last_err = f"{model}: HTTP {resp.status_code}"
+                    continue
+                data = resp.json()
+                out_text = ""
+                for part in data.get("candidates") or []:
+                    for p in part.get("content", {}).get("parts") or []:
+                        out_text += p.get("text") or ""
+                spec = json.loads(out_text)
+                if isinstance(spec, dict) and spec.get("strategy"):
+                    self.last_error = None
+                    return spec
+                last_err = f"{model}: response was not a valid spec"
+            except Exception as exc:
+                last_err = f"{model}: {exc}"
+        self.last_error = last_err
+        return None
 
 
 def get_llm() -> BaseLLM | None:

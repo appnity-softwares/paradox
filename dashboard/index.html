@@ -3858,7 +3858,7 @@
       const el = document.getElementById("aiProviderPill");
       if (!el) return;
       try {
-        const c = await api("/api/platform/admin/config");
+        const c = await api("/api/platform/ai/status");
         if (c.ai_key_set) {
           el.textContent = `AI: Gemini key set (${c.ai_key_source})`;
           el.style.color = "var(--green)";

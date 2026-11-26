@@ -546,6 +546,17 @@ def _admin_config_view() -> dict:
     }
 
 
+@router.get("/ai/status")
+def ai_status() -> dict:
+    """Public (no key material): which intelligence layer is active, so the
+    UI can show honestly whether the LLM or the rule-based fallback runs."""
+    return {
+        "ai_provider": _admin_config_view()["ai_provider"],
+        "ai_key_set": _admin_config_view()["ai_key_set"],
+        "ai_key_source": _admin_config_view()["ai_key_source"],
+    }
+
+
 @router.get("/admin/config")
 def admin_config_get(user: dict = Depends(require("admin"))) -> dict:
     """Admin panel settings view. The API key itself is never returned."""

@@ -348,11 +348,34 @@ def explain(spec: dict, metrics: dict, wf, tf_label: str) -> list:
     return lines
 
 
+# LLMs name parameters in natural language; map common aliases onto the
+# exact keys the strategy classes accept, then drop anything unknown so a
+# creative LLM can never crash the backtest with a bogus kwarg.
+PARAM_ALIASES = {
+    "std_dev": "num_std", "std": "num_std", "bands": "num_std",
+    "period": "length", "len": "length",
+    "overbought_level": "overbought", "oversold_level": "oversold",
+    "fast_period": "fast", "slow_period": "slow", "signal_period": "signal",
+    "atr_multiplier": "sl_atr_mult", "atr_mult": "sl_atr_mult",
+    "multiplier": "mult", "stop_mult": "sl_atr_mult",
+}
+
+
 def _normalize_spec(raw: dict) -> dict:
     """Fill defaults for any missing keys before validation (LLM or parser output)."""
     out = dict(DEFAULTS)
     out["strategy"] = raw.get("strategy") or "ema_cross"
-    out["params"] = dict(raw.get("params") or {})
+    params = {}
+    from core.optimize import PARAM_GRID
+    allowed = set(PARAM_GRID.get(out["strategy"], {}).keys())
+    for k, v in (raw.get("params") or {}).items():
+        k2 = PARAM_ALIASES.get(k, k)
+        if k2 in allowed:
+            params[k2] = v
+        elif k not in allowed and k2 not in allowed:
+            # keep unknown keys out of the constructor; surface them as notes
+            out.setdefault("notes", []).append(f"ignored unknown parameter '{k}'")
+    out["params"] = params
     out["risk_pct"] = float(raw.get("risk_pct") or DEFAULTS["risk_pct"])
     out["rr"] = float(raw.get("rr") or DEFAULTS["rr"])
     out["sl_method"] = raw.get("sl_method") or DEFAULTS["sl_method"]

@@ -657,7 +657,7 @@ async function api(url, opts) {
 /* ── tabs ──────────────────────────────────────────────── */
 const loaders = {
   terminal: () => { refreshAccount(); refreshPositions(); refreshPropFirm(); initPropFirmSelect(); refreshPropFirm(); loadMainChart(); loadDayStats(); loadVolatility(); loadFeedInfo(); loadTape(); tickClock(); },
-  strategy: () => { labInit(); },
+  strategy: () => { labInit(); loadAiProvider(); },
   propfirm: () => initPropFirm(),
   copilot: () => {},
   system: () => { loadAgents(); loadVertex(); loadCoverage(); loadMt5(); },
@@ -1744,7 +1744,7 @@ async function loadAiProvider() {
   const badge = $('ai-provider-badge');
   if (!badge) return;
   try {
-    const c = await api('/api/platform/admin/config');
+    const c = await api('/api/platform/ai/status');
     if (c.ai_key_set) {
       badge.textContent = `AI: Gemini key set (${c.ai_key_source})`;
       badge.style.color = 'var(--green)';
