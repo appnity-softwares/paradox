@@ -84,11 +84,11 @@ def data_ingest_status():
 
 
 @router.get("/api/data")
-def get_data(response: Response, tf: Timeframe = "15m", bars: int = Query(2000, ge=1, le=100_000), refresh: bool = False):
+def get_data(response: Response, tf: Timeframe = "15m", bars: int = Query(2000, ge=1, le=100_000), refresh: bool = False, symbol: str = "XAUUSD"):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    snapshot = fetch_market_data(tf, bars, force_refresh=refresh, allow_synthetic=False)
+    snapshot = fetch_market_data(tf, bars, symbol=symbol, force_refresh=refresh, allow_synthetic=False)
     records = []
     for timestamp, row in snapshot.data.iterrows():
         records.append({
@@ -101,6 +101,7 @@ def get_data(response: Response, tf: Timeframe = "15m", bars: int = Query(2000, 
         })
     return {
         "tf": tf,
+        "symbol": symbol,
         "bars": len(snapshot.data),
         "data": records,
         "meta": snapshot.metadata(),
@@ -136,10 +137,19 @@ def quote(response: Response, symbol: str = "XAUUSD", refresh: bool = True):
         except Exception as exc:
             raise HTTPException(503, f"MT5 quote failed: {exc}") from exc
 
-    try:
-        snapshot = fetch_market_data("1m", 2, force_refresh=refresh, allow_stale=True, allow_synthetic=True)
-    except Exception:
-        snapshot = fetch_market_data("15m", 2, force_refresh=False, allow_stale=True, allow_synthetic=True)
+    snapshot = None
+    # Synthetic fallback is a gold-only feature; another symbol with no
+    # local data must answer "no data", never a fabricated price.
+    allow_syn = symbol.upper() in ("XAUUSD",)
+    for tf in ("1m", "15m", "1h", "1d"):
+        try:
+            snapshot = fetch_market_data(tf, 2, symbol=symbol, force_refresh=False,
+                                         allow_stale=True, allow_synthetic=allow_syn)
+            break
+        except Exception:
+            continue
+    if snapshot is None:
+        raise HTTPException(503, f"no local data for {symbol}")
     last = snapshot.data.iloc[-1]
     return {
         "symbol": symbol,

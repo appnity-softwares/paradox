@@ -696,3 +696,104 @@ class BreakOfStructure:
             sig[i] = state
         sig[: self.warmup] = 0.0
         return pd.Series(sig, index=df.index)
+
+
+class DonchianBreakout:
+    """Classic Donchian channel breakout (Turtle-style persistent regime).
+
+    Long regime when close breaks above the `entry_len`-bar high (plus an
+    optional ATR buffer), short regime when it breaks below the matching
+    low. State holds until the opposite break fires.
+    """
+    key = "donchian_breakout"
+    PARAM_SCHEMA = {"entry_len": (10, 60), "buffer_atr": (0.0, 0.5)}
+
+    def __init__(self, cfg: StrategyConfig, entry_len: int = 20, buffer_atr: float = 0.0):
+        self.cfg = cfg
+        self.entry_len = int(entry_len)
+        self.buffer_atr = float(buffer_atr)
+        if self.entry_len < 5 or self.buffer_atr < 0:
+            raise ValueError("Donchian requires entry_len >= 5 and buffer_atr >= 0")
+        self.warmup = self.entry_len + 15
+        cfg.name = f"Donchian {self.entry_len}/{self.buffer_atr:g}"
+
+    def generate_signals(self, df: pd.DataFrame) -> pd.Series:
+        close = df["close"].to_numpy(dtype=float)
+        high = df["high"].to_numpy(dtype=float)
+        low = df["low"].to_numpy(dtype=float)
+        n = len(df)
+        atr14 = atr(df, 14).to_numpy(dtype=float)
+        sig = np.zeros(n)
+        state = 0.0
+        for i in range(self.entry_len, n):
+            prev_high = high[i - self.entry_len:i].max()
+            prev_low = low[i - self.entry_len:i].min()
+            buf = self.buffer_atr * (atr14[i] if np.isfinite(atr14[i]) else 0.0)
+            if close[i] > prev_high + buf:
+                state = 1.0
+            elif close[i] < prev_low - buf:
+                state = -1.0
+            sig[i] = state
+        sig[: self.warmup] = 0.0
+        return pd.Series(sig, index=df.index)
+
+
+class TripleMAAlignment:
+    """Triple moving-average alignment: trade only when fast/mid/slow EMAs
+    stack in the same direction (fast > mid > slow = long regime, and the
+    reverse for short). Whipsaw-filtered by construction.
+    """
+    key = "triple_ma"
+    PARAM_SCHEMA = {"fast": (5, 12), "mid": (15, 34), "slow": (50, 120)}
+
+    def __init__(self, cfg: StrategyConfig, fast: int = 9, mid: int = 21, slow: int = 55):
+        self.cfg = cfg
+        self.fast, self.mid, self.slow = int(fast), int(mid), int(slow)
+        if not 0 < self.fast < self.mid < self.slow:
+            raise ValueError("TripleMA requires fast < mid < slow")
+        self.warmup = self.slow * 3
+        cfg.name = f"3MA {self.fast}/{self.mid}/{self.slow}"
+
+    def generate_signals(self, df: pd.DataFrame) -> pd.Series:
+        close = df["close"]
+        f = ema(close, self.fast).to_numpy(dtype=float)
+        m = ema(close, self.mid).to_numpy(dtype=float)
+        s = ema(close, self.slow).to_numpy(dtype=float)
+        sig = np.where((f > m) & (m > s), 1.0, np.where((f < m) & (m < s), -1.0, 0.0))
+        sig[: self.warmup] = 0.0
+        return pd.Series(sig, index=df.index)
+
+
+class KeltnerTrend:
+    """Keltner channel regime: a close beyond EMA ± mult·ATR flips the
+    regime in that direction; the state persists until the opposite band
+    breaks. Trend-following with volatility-scaled entries.
+    """
+    key = "keltner_trend"
+    PARAM_SCHEMA = {"length": (15, 30), "mult": (1.0, 2.5)}
+
+    def __init__(self, cfg: StrategyConfig, length: int = 20, mult: float = 2.0):
+        self.cfg = cfg
+        self.length = int(length)
+        self.mult = float(mult)
+        if self.length < 5 or self.mult <= 0:
+            raise ValueError("Keltner requires length >= 5 and mult > 0")
+        self.warmup = self.length * 3
+        cfg.name = f"Keltner {self.length}x{self.mult:g}"
+
+    def generate_signals(self, df: pd.DataFrame) -> pd.Series:
+        close = df["close"].to_numpy(dtype=float)
+        mid = ema(df["close"], self.length).to_numpy(dtype=float)
+        band = self.mult * atr(df, 14).to_numpy(dtype=float)
+        n = len(df)
+        sig = np.zeros(n)
+        state = 0.0
+        for i in range(1, n):
+            if np.isfinite(mid[i]) and np.isfinite(band[i]):
+                if close[i] > mid[i] + band[i]:
+                    state = 1.0
+                elif close[i] < mid[i] - band[i]:
+                    state = -1.0
+            sig[i] = state
+        sig[: self.warmup] = 0.0
+        return pd.Series(sig, index=df.index)

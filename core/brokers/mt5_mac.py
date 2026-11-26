@@ -71,55 +71,94 @@ def resample_bars(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     return res
 
 
-def extract_and_sync_all_mt5_bars() -> dict:
-    """Read M1.hc and H1.hc directly from MT5 Mac installation and generate all real timeframes."""
-    cache_dir = MT5_MAC_DIR / "bases" / "MetaQuotes-Demo" / "history" / "XAUUSD" / "cache"
+def extract_and_sync_all_mt5_bars(symbol: str = "XAUUSD") -> dict:
+    """Read M1.hc and H1.hc directly from MT5 Mac installation and generate all real timeframes.
+
+    Backward compatible: the default symbol keeps the legacy xauusd_* CSV
+    names; any other terminal symbol gets its own <slug>_* files.
+    """
+    slug = "xauusd" if symbol == "XAUUSD" else symbol.lower()
+    cache_dir = MT5_MAC_DIR / "bases" / "MetaQuotes-Demo" / "history" / symbol / "cache"
     m1_file = cache_dir / "M1.hc"
     h1_file = cache_dir / "H1.hc"
 
     if not m1_file.exists():
         # Fallback check under any bases subdirectory
-        cand = list(MT5_MAC_DIR.glob("bases/*/history/XAUUSD/cache/M1.hc"))
+        cand = list(MT5_MAC_DIR.glob(f"bases/*/history/{symbol}/cache/M1.hc"))
         if cand:
             m1_file = cand[0]
             h1_file = m1_file.parent / "H1.hc"
+        elif not h1_file.exists():
+            h1_cand = list(MT5_MAC_DIR.glob(f"bases/*/history/{symbol}/cache/H1.hc"))
+            if h1_cand:
+                h1_file = h1_cand[0]
+
+    if not m1_file.exists() and h1_file.exists():
+        # H1-only symbol (FX on this terminal): hourly bars and up.
+        # Sub-hourly files are intentionally NOT written — a missing file
+        # must surface as "no data", never as another symbol's prices.
+        df_1h = decode_mt5_hc_file(h1_file)
+        df_1h.to_csv(DATA_DIR / f"{slug}_1h_real.csv", index=False)
+        df_4h = resample_bars(df_1h, "4h")
+        df_4h.to_csv(DATA_DIR / f"{slug}_4h_real.csv", index=False)
+        df_1d = resample_bars(df_1h, "1D")
+        df_1d.to_csv(DATA_DIR / f"{slug}_1d_real.csv", index=False)
+        import json as _json
+        (DATA_DIR / "mt5_mac_provenance.json").write_text(_json.dumps({
+            "source": "mt5_mac_history_cache",
+            "symbol": symbol,
+            "h1_file": str(h1_file),
+            "extracted_at": datetime.now(timezone.utc).isoformat(),
+            "bars_1h": len(df_1h),
+            "data_as_of": df_1h["time"].iloc[-1].isoformat() if "time" in df_1h.columns else None,
+        }, indent=2))
+        return {
+            "success": True,
+            "source": "MetaTrader 5 (Mac Cache)",
+            "symbol": symbol,
+            "granularity": "1h+",
+            "bars_1h": len(df_1h),
+            "start": df_1h["time"].iloc[0].isoformat(),
+            "end": df_1h["time"].iloc[-1].isoformat(),
+            "last_price": float(df_1h["close"].iloc[-1]),
+        }
 
     if not m1_file.exists():
         return {"success": False, "message": f"M1.hc not found in {cache_dir}"}
 
     # 1. Decode 1m bars
     df_1m = decode_mt5_hc_file(m1_file)
-    df_1m.to_csv(DATA_DIR / "xauusd_1m_real.csv", index=False)
+    df_1m.to_csv(DATA_DIR / f"{slug}_1m_real.csv", index=False)
 
     # 2. Resample 5m, 15m, 30m
     df_5m = resample_bars(df_1m, "5min")
-    df_5m.to_csv(DATA_DIR / "xauusd_5m_real.csv", index=False)
+    df_5m.to_csv(DATA_DIR / f"{slug}_5m_real.csv", index=False)
 
     df_15m = resample_bars(df_1m, "15min")
-    df_15m.to_csv(DATA_DIR / "xauusd_15m_real.csv", index=False)
+    df_15m.to_csv(DATA_DIR / f"{slug}_15m_real.csv", index=False)
 
     df_30m = resample_bars(df_1m, "30min")
-    df_30m.to_csv(DATA_DIR / "xauusd_30m_real.csv", index=False)
+    df_30m.to_csv(DATA_DIR / f"{slug}_30m_real.csv", index=False)
 
     # 3. Decode or resample 1h, 4h, 1d
     if h1_file.exists():
         df_1h = decode_mt5_hc_file(h1_file)
     else:
         df_1h = resample_bars(df_1m, "1h")
-    df_1h.to_csv(DATA_DIR / "xauusd_1h_real.csv", index=False)
+    df_1h.to_csv(DATA_DIR / f"{slug}_1h_real.csv", index=False)
 
     df_4h = resample_bars(df_1h, "4h")
-    df_4h.to_csv(DATA_DIR / "xauusd_4h_real.csv", index=False)
+    df_4h.to_csv(DATA_DIR / f"{slug}_4h_real.csv", index=False)
 
     df_1d = resample_bars(df_1h, "1D")
-    df_1d.to_csv(DATA_DIR / "xauusd_1d_real.csv", index=False)
+    df_1d.to_csv(DATA_DIR / f"{slug}_1d_real.csv", index=False)
 
     # Provenance marker: MacMT5Broker only serves bar files written here, so a
     # file produced by any other feed can never be labelled as MT5 data.
     import json
     (DATA_DIR / "mt5_mac_provenance.json").write_text(json.dumps({
         "source": "mt5_mac_history_cache",
-        "symbol": "XAUUSD",
+        "symbol": symbol,
         "m1_file": str(m1_file),
         "extracted_at": datetime.now(timezone.utc).isoformat(),
         "bars_1m": len(df_1m),

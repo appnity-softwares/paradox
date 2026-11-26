@@ -75,6 +75,10 @@ class PaxgBroker(DataProvider):
         )
 
     def fetch_ohlcv(self, symbol: str, timeframe: str, bars: int) -> pd.DataFrame:
+        # Honesty guard: this provider is a spot GOLD proxy (PAXGUSDT).
+        # Its prices must never be served for another instrument.
+        if symbol.upper() not in ("XAUUSD", "PAXGUSDT"):
+            raise ValueError(f"PAXG proxy only covers XAUUSD, not {symbol}")
         interval = _INTERVALS.get(timeframe.lower())
         if interval is None:
             raise ValueError(f"PAXG does not support timeframe {timeframe!r}")
@@ -96,6 +100,8 @@ class PaxgBroker(DataProvider):
         return df.iloc[:-1] if len(df) > 1 else df
 
     def fetch_tick(self, symbol: str):
+        if symbol.upper() not in ("XAUUSD", "PAXGUSDT"):
+            return None
         try:
             book = _get(f"ticker/bookTicker?symbol={SYMBOL}", timeout=4.0)
         except Exception:
@@ -112,6 +118,8 @@ class PaxgBroker(DataProvider):
         }
 
     def fetch_ticks(self, symbol: str, count: int = 1000) -> pd.DataFrame:
+        if symbol.upper() not in ("XAUUSD", "PAXGUSDT"):
+            raise ValueError(f"PAXG proxy only covers XAUUSD, not {symbol}")
         raise RuntimeError(
             "Binance PAXG provides a live quote stream, not historical ticks. "
             "Historical tick validation requires the MT5 export feed."

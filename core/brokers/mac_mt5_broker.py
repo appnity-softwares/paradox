@@ -12,11 +12,25 @@ from core.broker import DataProvider, BrokerStatus
 from core.brokers.mt5_mac import extract_and_sync_all_mt5_bars, DATA_DIR
 
 
+def _spread_for(symbol: str, price: float) -> tuple[float, int]:
+    """(half_spread, digits) per instrument. Gold keeps the legacy 0.30
+    total spread; FX pairs use ~1 pip total, JPY quotes 3 digits."""
+    s = symbol.upper()
+    if s in ("XAUUSD", "XAGUSD"):
+        return (0.15, 2)
+    if "JPY" in s:
+        return (0.005, 3)
+    if s.startswith(("XAU", "XAG")):
+        return (0.15, 2)
+    return (max(price * 0.00005, 0.00001), 5)
+
+
 class MacMT5Broker(DataProvider):
     """Native macOS MetaTrader 5 Provider: real spot XAUUSD data + execution bridge."""
 
     def __init__(self):
         self._last_tick = None
+        self._last_tick_symbol = "XAUUSD"
         try:
             from core.marketdata import store as md_store
             cov = md_store.coverage("XAUUSD")
@@ -32,6 +46,7 @@ class MacMT5Broker(DataProvider):
                         "last": round(p, 2),
                         "volume": 1.0,
                     }
+                    self._last_tick_symbol = "XAUUSD"
         except Exception:
             pass
 
@@ -61,10 +76,12 @@ class MacMT5Broker(DataProvider):
         )
 
     def fetch_ohlcv(self, symbol: str, timeframe: str, bars: int) -> pd.DataFrame:
-        tf_file = DATA_DIR / f"xauusd_{timeframe.lower()}_real.csv"
+        slug = "xauusd" if symbol == "XAUUSD" else symbol.lower()
+        tf_file = DATA_DIR / f"{slug}_{timeframe.lower()}_real.csv"
         if not tf_file.exists():
-            extract_and_sync_all_mt5_bars()
-        if not tf_file.exists():
+            extract_and_sync_all_mt5_bars(symbol)
+        if not tf_file.exists() and symbol == "XAUUSD":
+            # legacy fallback: gold only, never another symbol's price
             tf_file = DATA_DIR / "xauusd_15m_real.csv"
         if not tf_file.exists():
             raise FileNotFoundError(f"Real MT5 data for {symbol} {timeframe} not found")
@@ -83,8 +100,9 @@ class MacMT5Broker(DataProvider):
         df = df.sort_index()
         df = df[["open", "high", "low", "close", "volume"]].astype(float)
         
-        # Bridge to current live quote if newer than latest bar on disk
-        if self._last_tick:
+        # Bridge to current live quote if newer than latest bar on disk —
+        # only when the tick actually belongs to this symbol.
+        if self._last_tick and self._last_tick_symbol == symbol.upper():
             p = float(self._last_tick.get("last") or self._last_tick.get("bid", 0.0))
             t_now = self._last_tick.get("time") or datetime.now(timezone.utc)
             if p > 0 and t_now > df.index[-1]:
@@ -145,19 +163,33 @@ class MacMT5Broker(DataProvider):
         return pd.DataFrame()
 
     def fetch_tick(self, symbol: str):
-        if self._last_tick:
+        if self._last_tick and self._last_tick_symbol == symbol.upper():
             age = (datetime.now(timezone.utc) - self._last_tick["time"]).total_seconds()
             if age <= 15:
                 return self._last_tick
             self._last_tick = None
+        elif self._last_tick:
+            self._last_tick = None  # cached tick is for a different symbol
         try:
-            df = self.fetch_ohlcv(symbol, "1m", 1)
+            # H1-only symbols (FX on this terminal) have no 1m file; fall
+            # through the timeframes until one has local data.
+            df = None
+            for tf in ("1m", "15m", "1h", "1d"):
+                try:
+                    df = self.fetch_ohlcv(symbol, tf, 1)
+                    break
+                except FileNotFoundError:
+                    continue
+            if df is None or df.empty:
+                return None
             row = df.iloc[-1]
             price = float(row["close"])
+            half, digits = _spread_for(symbol, price)
+            self._last_tick_symbol = symbol.upper()
             return {
                 "time": datetime.now(timezone.utc),
-                "bid": round(price - 0.15, 2),
-                "ask": round(price + 0.15, 2),
+                "bid": round(price - half, digits),
+                "ask": round(price + half, digits),
                 "last": price,
                 "volume": float(row.get("volume", 1.0)),
             }

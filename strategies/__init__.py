@@ -10,6 +10,14 @@ from strategies.library import (
     FairValueGap,
     SMCOrderBlock,
     LiquiditySweep,
+    PSARTrend,
+    StochasticCross,
+    ZScoreReversion,
+    ADXTrend,
+    BreakOfStructure,
+    DonchianBreakout,
+    TripleMAAlignment,
+    KeltnerTrend,
 )
 
 ALL_STRATEGIES = {
@@ -23,6 +31,14 @@ ALL_STRATEGIES = {
     FairValueGap.key: FairValueGap,
     SMCOrderBlock.key: SMCOrderBlock,
     LiquiditySweep.key: LiquiditySweep,
+    PSARTrend.key: PSARTrend,
+    StochasticCross.key: StochasticCross,
+    ZScoreReversion.key: ZScoreReversion,
+    ADXTrend.key: ADXTrend,
+    BreakOfStructure.key: BreakOfStructure,
+    DonchianBreakout.key: DonchianBreakout,
+    TripleMAAlignment.key: TripleMAAlignment,
+    KeltnerTrend.key: KeltnerTrend,
 }
 
 __all__ = [
@@ -38,5 +54,13 @@ __all__ = [
     "FairValueGap",
     "SMCOrderBlock",
     "LiquiditySweep",
+    "PSARTrend",
+    "StochasticCross",
+    "ZScoreReversion",
+    "ADXTrend",
+    "BreakOfStructure",
+    "DonchianBreakout",
+    "TripleMAAlignment",
+    "KeltnerTrend",
     "ALL_STRATEGIES",
 ]

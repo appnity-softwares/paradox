@@ -245,10 +245,7 @@
       <!-- watchlist / symbol info -->
       <div class="ws-side">
         <div class="ws-title"><span>Watchlist</span><span id="wl-feed" class="muted" style="font-size:9px">—</span></div>
-        <div class="wl-row sel">
-          <div><div class="wl-sym">XAUUSD</div><div class="wl-sub">Gold spot · demo</div></div>
-          <div class="wl-px"><div id="wl-price">—</div><div class="wl-chg" id="wl-chg">—</div></div>
-        </div>
+        <div id="watchlist"></div>
         <div class="ws-title"><span>Session stats</span></div>
         <div class="info-row"><span>Day open</span><b id="st-open">—</b></div>
         <div class="info-row"><span>Day high</span><b id="st-high" class="up">—</b></div>
@@ -291,6 +288,8 @@
             <span class="tf" data-ind="sma200">SMA200</span>
             <span class="tf" data-ind="vwap">VWAP</span>
             <span class="tf" data-ind="rsi">RSI</span>
+            <span class="tf" data-ind="macd">MACD</span>
+            <span class="tf" data-ind="stoch">STOCH</span>
           </span>
         </div>
         <div id="chart-wrap" style="position:relative;flex:1;min-height:0">
@@ -302,6 +301,13 @@
           <span class="tf ctype" onclick="setChartType('line', this)">Line</span>
           <span class="tf ctype" onclick="setChartType('area', this)">Area</span>
           <span class="tf" onclick="toggleLog(this)">LOG</span>
+          <span style="width:1px;height:16px;background:var(--border)"></span>
+          <span class="tf rbtn" onclick="setRange('1D', this)">1D</span>
+          <span class="tf rbtn" onclick="setRange('5D', this)">5D</span>
+          <span class="tf rbtn" onclick="setRange('1M', this)">1M</span>
+          <span class="tf rbtn" onclick="setRange('3M', this)">3M</span>
+          <span class="tf rbtn" onclick="setRange('1Y', this)">1Y</span>
+          <span class="tf rbtn active" onclick="setRange('ALL', this)">All</span>
           <span class="mono" style="margin-left:auto;font-size:12px;color:var(--accent)" id="bar-countdown" title="Time to bar close">--:--</span>
           <button class="btn" style="padding:5px 12px;font-size:12px" onclick="loadMainChart()">↻ Refresh</button>
           <span class="muted" id="chart-note" style="font-size:11.5px"></span>
@@ -310,7 +316,7 @@
 
       <!-- order ticket -->
       <div class="ws-side">
-        <div class="ws-title"><span>Order ticket · XAUUSD</span></div>
+        <div class="ws-title"><span>Order ticket · <span id="od-sym">XAUUSD</span></span></div>
         <div style="padding:12px 14px 14px">
           <div class="grid-2" style="gap:10px;margin-bottom:10px">
             <div><label>Volume (lots)</label>
@@ -392,6 +398,14 @@
             <option value="supertrend">SuperTrend</option>
             <option value="session_breakout">Session breakout</option>
             <option value="smc_fvg">SMC fair value gap</option>
+            <option value="psar_trend">Parabolic SAR trend</option>
+            <option value="stoch_cross">Stochastic cross</option>
+            <option value="zscore_reversion">Z-score reversion</option>
+            <option value="adx_trend">ADX trend</option>
+            <option value="smc_bos">SMC break of structure</option>
+            <option value="donchian_breakout">Donchian breakout</option>
+            <option value="triple_ma">Triple MA alignment</option>
+            <option value="keltner_trend">Keltner trend</option>
             <option value="smc_order_block">SMC order block</option>
             <option value="smc_liquidity_sweep">SMC liquidity sweep</option>
           </select></div>
@@ -534,30 +548,98 @@ document.querySelectorAll('#tabs .tab').forEach(t => t.addEventListener('click',
 
 /* ── header quote ──────────────────────────────────────── */
 let lastQuote = null;
+const SYMBOLS = [
+  {sym: 'XAUUSD', label: 'Gold spot', digits: 2},
+  {sym: 'EURUSD', label: 'Euro / US Dollar', digits: 5},
+  {sym: 'GBPUSD', label: 'Pound / US Dollar', digits: 5},
+  {sym: 'USDJPY', label: 'US Dollar / Yen', digits: 3},
+  {sym: 'USDCHF', label: 'US Dollar / Franc', digits: 5},
+  {sym: 'USDCNH', label: 'US Dollar / Offshore Yuan', digits: 5},
+];
+let activeSymbol = 'XAUUSD';
+const quotes = {};   // sym -> last quote
+
+function symMeta(sym) {
+  return SYMBOLS.find(s => s.sym === sym) || {sym, label: sym, digits: 2};
+}
+
+function renderWatchlist() {
+  $('watchlist').innerHTML = SYMBOLS.map(s => {
+    const q = quotes[s.sym];
+    const px = q ? Number(q.price).toFixed(s.digits) : '—';
+    const sel = s.sym === activeSymbol ? ' sel' : '';
+    return `<div class="wl-row${sel}" onclick="selectSymbol('${s.sym}')">` +
+      `<div><div class="wl-sym">${s.sym}</div><div class="wl-sub">${s.label}</div></div>` +
+      `<div class="wl-px"><div id="wlpx-${s.sym}">${px}</div>` +
+      `<div class="wl-chg" id="wlchg-${s.sym}">—</div></div></div>`;
+  }).join('');
+}
+
+function selectSymbol(sym) {
+  if (sym === activeSymbol) return;
+  activeSymbol = sym;
+  $('od-sym').textContent = sym;
+  const q = quotes[sym];
+  if (q) applyActiveQuote(q, null);
+  renderWatchlist();
+  loadMainChart();
+  loadDayStats();
+}
+
+function applyActiveQuote(q, prev) {
+  const meta = symMeta(activeSymbol);
+  $('hdr-price').textContent = Number(q.price).toFixed(meta.digits);
+  if (prev !== undefined && prev !== null) {
+    const d = q.price - prev;
+    const el = $('hdr-chg');
+    el.textContent = (d >= 0 ? '▲ +' : '▼ ') + d.toFixed(meta.digits);
+    el.className = 'mono ' + (d >= 0 ? 'up' : 'down');
+  }
+  const b = $('hdr-provider');
+  b.textContent = q.provider + (q.delayed ? ' · DELAYED' : q.stale ? ' · STALE' : '');
+  b.className = 'badge ' + (q.delayed ? 'amber' : q.stale ? 'red' : 'green');
+  $('ts-price').textContent = Number(q.price).toFixed(meta.digits);
+  $('ts-bid').textContent = Number(q.bid ?? q.price).toFixed(meta.digits);
+  $('ts-ask').textContent = Number(q.ask ?? q.price).toFixed(meta.digits);
+  if (q.bid != null && q.ask != null) $('ts-spread').textContent = (q.ask - q.bid).toFixed(meta.digits);
+  $('btn-bid').textContent = Number(q.bid ?? q.price).toFixed(meta.digits);
+  $('btn-ask').textContent = Number(q.ask ?? q.price).toFixed(meta.digits);
+  $('wl-feed').textContent = q.provider.replace('MetaTrader 5 ', 'MT5 ');
+  // watchlist row change vs first seen price
+  const seen = quotes['__first_' + activeSymbol];
+  const cell = $('wlchg-' + activeSymbol);
+  if (cell && seen != null) {
+    const pct = (q.price - seen) / seen * 100;
+    cell.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+    cell.className = 'wl-chg ' + (pct >= 0 ? 'up' : 'down');
+  }
+}
+
 async function pollQuote() {
   try {
-    const q = await api('/api/quote');
-    const prev = lastQuote?.price;
-    lastQuote = q;
-    $('hdr-price').textContent = Number(q.price).toFixed(2);
-    if (prev !== undefined) {
-      const d = q.price - prev;
-      const el = $('hdr-chg');
-      el.textContent = (d >= 0 ? '▲ +' : '▼ ') + d.toFixed(2);
-      el.className = 'mono ' + (d >= 0 ? 'up' : 'down');
+    // active symbol first, then the rest of the watchlist
+    const order = [activeSymbol, ...SYMBOLS.map(s => s.sym).filter(s => s !== activeSymbol)];
+    for (const sym of order) {
+      try {
+        const q = await api('/api/quote?symbol=' + sym);
+        const prev = quotes[sym]?.price;
+        quotes[sym] = q;
+        if (quotes['__first_' + sym] == null) quotes['__first_' + sym] = q.price;
+        const pxCell = document.getElementById('wlpx-' + sym);
+        if (pxCell) pxCell.textContent = Number(q.price).toFixed(symMeta(sym).digits);
+        const chgCell = document.getElementById('wlchg-' + sym);
+        if (chgCell && quotes['__first_' + sym] != null) {
+          const pct = (q.price - quotes['__first_' + sym]) / quotes['__first_' + sym] * 100;
+          chgCell.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+          chgCell.className = 'wl-chg ' + (pct >= 0 ? 'up' : 'down');
+        }
+        if (sym === activeSymbol) applyActiveQuote(q, prev);
+      } catch (e) {
+        // no local data for this symbol — say so, never fake a price
+        const cell = document.getElementById('wlchg-' + sym);
+        if (cell) { cell.textContent = 'no local data'; cell.className = 'wl-chg'; }
+      }
     }
-    const b = $('hdr-provider');
-    b.textContent = q.provider + (q.delayed ? ' · DELAYED' : q.stale ? ' · STALE' : '');
-    b.className = 'badge ' + (q.delayed ? 'amber' : q.stale ? 'red' : 'green');
-    // top strip
-    $('ts-price').textContent = Number(q.price).toFixed(2);
-    $('ts-bid').textContent = Number(q.bid).toFixed(2);
-    $('ts-ask').textContent = Number(q.ask).toFixed(2);
-    $('ts-spread').textContent = (q.ask - q.bid).toFixed(2);
-    $('btn-bid').textContent = Number(q.bid).toFixed(2);
-    $('btn-ask').textContent = Number(q.ask).toFixed(2);
-    $('wl-price').textContent = Number(q.price).toFixed(2);
-    $('wl-feed').textContent = q.provider.replace('MetaTrader 5 ', 'MT5 ');
   } catch (e) { /* quote feed may be down; header stays dash */ }
 }
 setInterval(pollQuote, 5000);
@@ -580,7 +662,7 @@ setInterval(tickClock, 1000);
 
 async function loadDayStats() {
   try {
-    const r = await api('/api/data?tf=1h&bars=60');
+    const r = await api('/api/data?tf=1h&bars=60&symbol=' + activeSymbol);
     const all = r.data || [];
     if (!all.length) return;
     const bars = all.slice(-24);
@@ -646,7 +728,7 @@ function realBars(bars) {
 async function loadVolatility() {
   try {
     for (const [tf, id] of [['15m', 'v-atr15'], ['1h', 'v-atr60'], ['4h', 'v-atr240']]) {
-      const r = await api(`/api/data?tf=${tf}&bars=120`);
+      const r = await api(`/api/data?tf=${tf}&bars=120&symbol=${activeSymbol}`);
       const real = realBars(r.data || []);
       const a = atrOf(real.slice(-15));
       $(id).textContent = (a && a > 0) ? '$' + a.toFixed(2) : '—';
@@ -678,7 +760,7 @@ setInterval(loadDayStats, 60000);
 let tapePrev = null;
 async function loadTape() {
   try {
-    const r = await api('/api/ticks?count=30');
+    const r = await api('/api/ticks?count=30&symbol=' + activeSymbol);
     const ticks = (r.ticks || []).slice().reverse();
     $('tape-body').innerHTML = ticks.map(t => {
       const prev = tapePrev;
@@ -763,11 +845,11 @@ async function sendOrder(side) {
   try {
     const res = await api('/api/trade/order', {method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({symbol: 'XAUUSD', side, volume: parseFloat($('od-vol').value),
+      body: JSON.stringify({symbol: activeSymbol, side, volume: parseFloat($('od-vol').value),
         sl: parseFloat($('od-sl').value), tp: parseFloat($('od-tp').value),
         mode: 'paper', comment: 'Terminal-' + side})});
     fb.innerHTML = res.success
-      ? `<span class="up">✓ ${side} filled @ $${Number(res.filled_price).toFixed(2)} (ticket #${res.order_id})</span>`
+      ? `<span class="up">✓ ${side} ${activeSymbol} filled @ ${Number(res.filled_price).toFixed(symMeta(activeSymbol).digits)} (ticket #${res.order_id})</span>`
       : `<span class="down">✗ ${esc(res.error || res.detail || 'order rejected')}</span>`;
     refreshAccount(); refreshPositions();
   } catch (e) { fb.innerHTML = `<span class="down">✗ ${esc(e.message)}</span>`; }
@@ -791,7 +873,7 @@ async function closeAll() {
 let chartTf = '15m';
 let chartType = 'candles';
 let logScale = false;
-const IND = {ema20: true, ema50: true, bb: false, vol: true, sma200: false, vwap: false, rsi: false};
+const IND = {ema20: true, ema50: true, bb: false, vol: true, sma200: false, vwap: false, rsi: false, macd: false, stoch: false};
 let TV = null, candleSeries = null, volSeries = null, indSeries = {}, mainSeries = null;
 let chartReady = false, chartData = [];
 
@@ -820,7 +902,7 @@ function initChart() {
     crosshair: {mode: LightweightCharts.CrosshairMode.Normal},
   });
   try {
-    TV.createTextWatermark('XAUUSD', {
+    TV.createTextWatermark('PARADOX', {
       color: 'rgba(140,155,175,.07)', fontSize: 64, fontFamily: 'Menlo',
     });
   } catch (e) { /* watermark optional */ }
@@ -840,6 +922,24 @@ function initChart() {
   indSeries.rsi.createPriceLine({price: 70, color: 'rgba(229,84,79,.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
   indSeries.rsi.createPriceLine({price: 30, color: 'rgba(52,192,124,.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
   TV.priceScale('rsi').applyOptions({scaleMargins: {top: 0.78, bottom: 0.02}});
+  indSeries.macdH = TV.addHistogramSeries({priceScaleId: 'macd',
+    lastValueVisible: false, priceLineVisible: false});
+  indSeries.macdL = TV.addLineSeries({color: '#4f8cff', lineWidth: 1,
+    priceScaleId: 'macd', lastValueVisible: false, priceLineVisible: false,
+    crosshairMarkerVisible: false});
+  indSeries.macdS = TV.addLineSeries({color: '#e0b34d', lineWidth: 1,
+    priceScaleId: 'macd', lastValueVisible: false, priceLineVisible: false,
+    crosshairMarkerVisible: false});
+  TV.priceScale('macd').applyOptions({scaleMargins: {top: 0.62, bottom: 0.2}});
+  indSeries.stochK = TV.addLineSeries({color: '#4f8cff', lineWidth: 1,
+    priceScaleId: 'stoch', lastValueVisible: false, priceLineVisible: false,
+    crosshairMarkerVisible: false});
+  indSeries.stochD = TV.addLineSeries({color: '#e0b34d', lineWidth: 1,
+    priceScaleId: 'stoch', lastValueVisible: false, priceLineVisible: false,
+    crosshairMarkerVisible: false});
+  indSeries.stochD.createPriceLine({price: 80, color: 'rgba(229,84,79,.35)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
+  indSeries.stochD.createPriceLine({price: 20, color: 'rgba(52,192,124,.35)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
+  TV.priceScale('stoch').applyOptions({scaleMargins: {top: 0.62, bottom: 0.02}});
   for (const [key, color, width] of [
       ['ema20', '#d4a843', 1.4], ['ema50', '#4f8cff', 1.4],
       ['sma200', '#9b6dd6', 1.2],
@@ -923,6 +1023,34 @@ function applyIndicators() {
     }
     indSeries.rsi.setData(out);
   } else indSeries.rsi.setData([]);
+  if (IND.macd) {
+    const f = ema(closes, 12), s = ema(closes, 26);
+    const macdLine = f.map((v, i) => v == null || s[i] == null ? null : v - s[i]);
+    const sigLine = ema(macdLine.map(v => v ?? 0), 9).map((v, i) => macdLine[i] == null ? null : v);
+    indSeries.macdH.setData(stamp(macdLine.map((v, i) => v == null ? null : v - (sigLine[i] ?? 0))));
+    indSeries.macdL.setData(stamp(macdLine));
+    indSeries.macdS.setData(stamp(sigLine));
+  } else {
+    indSeries.macdH.setData([]); indSeries.macdL.setData([]); indSeries.macdS.setData([]);
+  }
+  if (IND.stoch) {
+    const highs = chartData.map(b => b.high), lows = chartData.map(b => b.low);
+    const k = [], d = [];
+    for (let i = 0; i < closes.length; i++) {
+      if (i < 14) { k.push(null); d.push(null); continue; }
+      const hh = Math.max(...highs.slice(i - 13, i + 1));
+      const ll = Math.min(...lows.slice(i - 13, i + 1));
+      k.push(ll === hh ? 50 : (closes[i] - ll) / (hh - ll) * 100);
+    }
+    for (let i = 0; i < k.length; i++) {
+      if (i < 16 || k[i] == null || k[i - 1] == null || k[i - 2] == null) { d.push(null); continue; }
+      d.push((k[i] + k[i - 1] + k[i - 2]) / 3);
+    }
+    indSeries.stochK.setData(stamp(k));
+    indSeries.stochD.setData(stamp(d));
+  } else {
+    indSeries.stochK.setData([]); indSeries.stochD.setData([]);
+  }
   volSeries.applyOptions({visible: IND.vol});
 }
 
@@ -982,6 +1110,27 @@ async function loadMarkers() {
   } catch (e) {}
 }
 
+/* ── TradingView-style range selector ──────────────────── */
+const RANGE_BARS = {   // bars back from the newest candle, per timeframe
+  '1D':  {'15m': 96,  '1m': 1440, '30m': 48, '1h': 24, '4h': 6,  '1d': 1},
+  '5D':  {'15m': 480, '1m': 7200, '30m': 240, '1h': 120, '4h': 30, '1d': 5},
+  '1M':  {'15m': 1920, '30m': 960, '1h': 480, '4h': 120, '1d': 22, '1m': 28800},
+  '3M':  {'15m': 5760, '30m': 2880, '1h': 1440, '4h': 360, '1d': 66},
+  '1Y':  {'1d': 260, '4h': 1560, '1h': 6240},
+};
+function setRange(r, btn) {
+  document.querySelectorAll('.rbtn').forEach(x => x.classList.remove('active'));
+  btn.classList.add('active');
+  if (!chartReady || !chartData.length) return;
+  if (r === 'ALL') { TV.timeScale().fitContent(); return; }
+  const n = (RANGE_BARS[r] || {})[chartTf];
+  if (!n) { TV.timeScale().fitContent(); return; }
+  const bars = chartData.slice(-n);
+  if (!bars.length) { TV.timeScale().fitContent(); return; }
+  TV.timeScale().setVisibleLogicalRange({
+    from: chartData.length - bars.length, to: chartData.length + 2});
+}
+
 /* ── bar-close countdown ───────────────────────────────── */
 const TF_SEC = {'1m': 60, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400};
 setInterval(() => {
@@ -996,7 +1145,7 @@ setInterval(() => {
 async function loadMainChart() {
   initChart();
   try {
-    const r = await api('/api/data?tf=' + chartTf + '&bars=5000');
+    const r = await api('/api/data?tf=' + chartTf + '&bars=5000&symbol=' + activeSymbol);
     chartData = (r.data || []).map(b => ({time: b.time, open: b.open, high: b.high,
       low: b.low, close: b.close, volume: b.volume}));
     if (chartReady) {
@@ -1012,7 +1161,7 @@ async function loadMainChart() {
     }
     const last = chartData[chartData.length - 1];
     document.getElementById('chart-note').textContent =
-      `${chartData.length} bars · ${chartTf} · real recorded bars from the tick store — delayed by definition, never presented as live.`;
+      `${activeSymbol} · ${chartData.length} bars · ${chartTf} · real recorded bars — delayed by definition, never presented as live.`;
   } catch (e) {
     document.getElementById('chart-note').textContent = 'Chart data unavailable: ' + e.message;
   }
@@ -1266,6 +1415,7 @@ async function loadMt5() {
 /* ── boot ──────────────────────────────────────────────── */
 (async () => {
   document.body.classList.add('pro-mode');
+  renderWatchlist();
   pollQuote();
   loaders.terminal();
 })();

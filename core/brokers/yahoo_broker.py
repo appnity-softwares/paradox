@@ -51,6 +51,10 @@ class YahooBroker(DataProvider):
         )
 
     def fetch_ohlcv(self, symbol="XAUUSD", timeframe="15m", bars=5000) -> pd.DataFrame:
+        # Honesty guard: this provider serves GOLD FUTURES (GC=F) only.
+        # Its prices must never be served for another instrument.
+        if symbol.upper() not in ("XAUUSD", "GC=F"):
+            raise ValueError(f"Yahoo GC=F provider only covers XAUUSD, not {symbol}")
         # Yahoo uses GC=F for gold futures regardless of symbol passed
         period = YAHOO_PERIODS.get(timeframe, "60d")
         raw = self._yf.download("GC=F", interval=timeframe, period=period, progress=False, auto_adjust=False)

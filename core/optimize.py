@@ -31,6 +31,10 @@ PARAM_GRID = {
     "zscore_reversion": {"length": [30, 50], "entry_z": [1.5, 2.0, 2.5]},
     "adx_trend": {"fast": [20, 30], "slow": [60, 100], "adx_threshold": [15, 20, 25]},
     "smc_bos": {"swing_len": [3, 5, 8]},
+    # Dashboard-visible additions
+    "donchian_breakout": {"entry_len": [20, 55], "buffer_atr": [0.0, 0.25]},
+    "triple_ma": {"fast": [8, 9], "mid": [21, 26], "slow": [50, 100]},
+    "keltner_trend": {"length": [20, 30], "mult": [1.5, 2.0]},
 }
 
 
