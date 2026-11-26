@@ -540,6 +540,8 @@
       <h3>Results</h3>
       <div class="stats" id="bt-metric-cards"></div>
       <div class="out" id="bt-extra"></div>
+      <div id="bt-breakdown"></div>
+      <div id="bt-audit"></div>
     </div>
 
     <div class="card">
@@ -1588,12 +1590,13 @@ async function runBacktest() {
     daily_loss_limit_pct: parseFloat($('bt-maxloss').value) || 3.0};
   try {
     const tick = $('bt-mode') && $('bt-mode').value === 'tick';
-    const r = await api(tick ? '/api/tick_replay' : '/api/backtest', {method: 'POST',
+    const r = await api(tick ? '/api/tick_replay'
+                             : '/api/backtest/audit', {method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(tick ? Object.assign(common, {bars: 2000}) : common)});
+      body: JSON.stringify(tick ? Object.assign(common, {bars: 2000}) : Object.assign(common, {bars: 1500}))});
     $('bt-status').textContent = tick
       ? `✓ Done — ${(r.result.coverage.ticks_scanned || 0).toLocaleString()} ticks, real bid/ask fills`
-      : '✓ Done';
+      : `✓ Done — bar result audited against ${(r.audit ? r.audit.tick.ticks_scanned : 0).toLocaleString()} real ticks`;
     const m = r.metrics || {};
     const cols = ['Return %', 'Win Rate %', 'Profit Factor', 'Sharpe',
                   'Max DD %', 'Total Trades', 'RR (realized)', 'Net P&L $'];
@@ -1603,8 +1606,68 @@ async function runBacktest() {
     const extra = Object.entries(m).filter(([k]) => !cols.includes(k))
       .map(([k, v]) => `${k}: ${typeof v === 'number' ? v.toFixed(3) : v}`).join('\n');
     $('bt-extra').textContent = extra;
+    renderBreakdown(r.audit && r.audit.bar);
+    renderAudit(r.audit);
     $('bt-results').hidden = false;
   } catch (e) { $('bt-status').textContent = '⚠ ' + e.message; }
+}
+
+function renderBreakdown(b) {
+  const el = $('bt-breakdown');
+  if (!b) { el.innerHTML = ''; return; }
+  const reasons = Object.entries(b.reasons || {}).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—';
+  const months = (b.monthly || []).map(x =>
+    `<tr><td>${esc(x.month)}</td><td class="mono" style="color:${x.pnl >= 0 ? 'var(--green)' : '#e05a5a'}">${x.pnl >= 0 ? '+' : ''}${x.pnl.toFixed(2)}</td></tr>`).join('');
+  el.innerHTML = `
+    <h4 style="margin:14px 0 6px;font-size:13px">Full breakdown — kitna sahi, kitna galat</h4>
+    <div class="stats" style="grid-template-columns:repeat(6,1fr)">
+      <div class="stat"><div class="k">Wins</div><div class="v mono" style="color:var(--green)">${b.wins}</div></div>
+      <div class="stat"><div class="k">Losses</div><div class="v mono" style="color:#e05a5a">${b.losses}</div></div>
+      <div class="stat"><div class="k">Win streak</div><div class="v mono">${b.win_streak}</div></div>
+      <div class="stat"><div class="k">Loss streak</div><div class="v mono" style="color:#e0b64f">${b.loss_streak}</div></div>
+      <div class="stat"><div class="k">Best trade</div><div class="v mono" style="color:var(--green)">$${b.best_trade}</div></div>
+      <div class="stat"><div class="k">Worst trade</div><div class="v mono" style="color:#e05a5a">$${b.worst_trade}</div></div>
+    </div>
+    <p class="muted" style="font-size:11px;margin:8px 0 2px">Exits — ${esc(reasons)}</p>
+    ${months ? `<table style="width:auto;font-size:11px;border-collapse:collapse;margin-top:6px">
+      <thead><tr style="color:var(--text-faint);text-align:left"><th>Month</th><th>P&L $</th></tr></thead>
+      <tbody>${months}</tbody></table>` : ''}`;
+}
+
+function renderAudit(a) {
+  const el = $('bt-audit');
+  if (!a || !a.matched) { el.innerHTML = ''; return; }
+  const slipCol = a.avg_entry_slip > 0.005 ? '#e05a5a' : 'var(--green)';
+  const pairs = (a.pairs || []).slice(0, 12).map(p => {
+    const dc = p.pnl_delta >= 0 ? 'var(--green)' : '#e05a5a';
+    const flag = p.bar_reason !== p.tick_reason
+      ? ` <span style="color:#e0b64f" title="bar said ${esc(p.bar_reason)}, ticks said ${esc(p.tick_reason)}">⚠</span>` : '';
+    return `<tr><td class="mono" style="font-size:10px">${esc(p.entry_time.slice(0, 16))}</td>
+      <td>${p.side === 'LONG' ? 'L' : 'S'}</td>
+      <td class="mono">$${p.bar_entry} → $${p.tick_entry}</td>
+      <td class="mono" style="color:${slipCol}">${p.entry_slip >= 0 ? '+' : ''}${p.entry_slip.toFixed(3)}</td>
+      <td class="mono">$${p.bar_pnl} → $${p.tick_pnl}</td>
+      <td class="mono" style="color:${dc}">${p.pnl_delta >= 0 ? '+' : ''}${p.pnl_delta.toFixed(2)}</td>
+      <td>${esc(p.tick_reason)}${flag}</td></tr>`;
+  }).join('');
+  const verdict = (a.verdict || []).map(v => `<li style="margin:3px 0">${esc(v)}</li>`).join('');
+  el.innerHTML = `
+    <h4 style="margin:16px 0 6px;font-size:13px">Per-tick audit — bar model vs real recorded ticks
+      <span class="muted" style="font-weight:normal;font-size:10px">(${a.tick.ticks_scanned.toLocaleString()} ticks scanned)</span></h4>
+    <div class="stats" style="grid-template-columns:repeat(5,1fr)">
+      <div class="stat"><div class="k">Trades matched</div><div class="v mono">${a.matched}</div></div>
+      <div class="stat"><div class="k">Avg entry slip $/oz</div><div class="v mono" style="color:${slipCol}">${a.avg_entry_slip >= 0 ? '+' : ''}${a.avg_entry_slip.toFixed(3)}</div></div>
+      <div class="stat"><div class="k">Worst slip</div><div class="v mono" style="color:#e0b64f">+${a.worst_entry_slip.toFixed(3)}</div></div>
+      <div class="stat"><div class="k">Bar net → tick net</div><div class="v mono">$${a.bar.net_pnl} → $${a.tick.net_pnl}</div></div>
+      <div class="stat"><div class="k">P&L delta</div><div class="v mono" style="color:${a.pnl_delta_total >= 0 ? 'var(--green)' : '#e05a5a'}">${a.pnl_delta_total >= 0 ? '+' : ''}$${a.pnl_delta_total}</div></div>
+    </div>
+    <ul style="font-size:11px;color:var(--text-faint);margin:8px 0 4px;padding-left:18px">${verdict}</ul>
+    <details style="margin-top:6px"><summary class="muted" style="font-size:11px;cursor:pointer">Trade-by-trade comparison (first 12 of ${a.matched})</summary>
+      <table style="width:100%;font-size:10px;border-collapse:collapse;margin-top:6px">
+        <thead><tr style="color:var(--text-faint);text-align:left">
+          <th>Entry</th><th>Sd</th><th>Bar → Tick entry</th><th>Slip</th><th>Bar → Tick P&L</th><th>ΔP&L</th><th>Tick exit</th>
+        </tr></thead><tbody>${pairs}</tbody></table></details>
+    <p class="muted" style="font-size:10px;margin:6px 0 0">Tick fills come from the real recorded bid/ask archive — every second of actual price. This audit shows what the candle model got wrong.</p>`;
 }
 
 function renderBtMode() {

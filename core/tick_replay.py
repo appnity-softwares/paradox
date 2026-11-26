@@ -253,9 +253,15 @@ def run_tick_replay(
             px = bid_w[0] if pos == 1 else ask_w[0]
             _close(px, index[i], "Signal exit")
 
-        # 2) entry at the window's first tick
+        # 2) entry at the window's first tick. Session gate must match the
+        # bar engine exactly (entry-bar hour vs session_hours) — otherwise
+        # the tick twin takes night trades the bar engine never sees and the
+        # two equity paths diverge from then on.
+        in_session = cfg.session_hours is None or (
+            cfg.session_hours[0] <= index[i].hour < cfg.session_hours[1]
+        )
         if (
-            pos == 0 and sig != 0 and t_w is not None
+            pos == 0 and sig != 0 and t_w is not None and in_session
             and not blocked_day and trades_today < cfg.max_trades_per_day
             and (trade_start is None or index[i] >= trade_start)
         ):

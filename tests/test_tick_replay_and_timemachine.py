@@ -195,3 +195,43 @@ def test_history_replay_short_side():
                          side="sell", flat_by="23:55")
     for t in res["trades"]:
         assert t["stop"] > t["entry"]      # short stop above entry
+
+
+# ---------------------------------------------------------------- tick audit
+
+def test_audit_aligns_and_reports(tmp_path):
+    """Audit must match most trades 1:1 and always produce a verdict."""
+    from core.tick_audit import audit_bar_vs_tick
+    bars = make_bars(n=300)
+    root = write_ticks(tmp_path, bars)
+    cfg = StrategyConfig(risk_pct=1.0, rr=2.0, sl_method="fixed", sl_fixed=5.0,
+                         session="all")
+    strat = EMACross(cfg, fast=10, slow=30)
+    a = audit_bar_vs_tick(bars, strat, cfg, tick_dir=root)
+    assert a["bar"]["trades"] > 0
+    assert a["matched"] >= a["bar"]["trades"] * 0.5   # majority aligns 1:1
+    assert a["bar"]["wins"] + a["bar"]["losses"] == a["bar"]["trades"]
+    assert a["tick"]["ticks_scanned"] > 0
+    assert a["verdict"] and all(isinstance(v, str) for v in a["verdict"])
+    # per-pair rows carry both engines' numbers
+    for p in a["pairs"]:
+        assert set(p) >= {"entry_time", "side", "bar_entry", "tick_entry",
+                          "entry_slip", "bar_pnl", "tick_pnl", "pnl_delta"}
+    # aggregate delta is tick_net - bar_net, not just matched pairs
+    assert abs(a["pnl_delta_total"] - (a["tick"]["net_pnl"] - a["bar"]["net_pnl"])) < 0.01
+
+
+def test_audit_session_gate_matches_bar_engine(tmp_path):
+    """With a session filter the tick twin must not take night trades the
+    bar engine never sees — the alignment bug this audit exposed."""
+    from core.tick_audit import audit_bar_vs_tick
+    bars = make_bars(n=400)
+    root = write_ticks(tmp_path, bars)
+    cfg = StrategyConfig(risk_pct=1.0, rr=2.0, sl_method="fixed", sl_fixed=5.0,
+                         session="ny")
+    strat = EMACross(cfg, fast=10, slow=30)
+    a = audit_bar_vs_tick(bars, strat, cfg, tick_dir=root)
+    # every tick-only trade must still be inside the session window
+    for t in a["pairs"]:
+        hour = pd.Timestamp(t["entry_time"]).hour
+        assert 12 <= hour < 21

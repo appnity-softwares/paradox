@@ -356,6 +356,7 @@ class BacktestReq(BaseModel):
     session: SessionName = "all"
     max_trades_per_day: int = Field(4, ge=1, le=50)
     daily_loss_limit_pct: float = Field(3.0, ge=0.1, le=20.0)
+    bars: int = Field(1500, ge=100, le=5000)  # audit window (bars fetched)
 class BuildReq(BaseModel):
     text: str = Field(min_length=3, max_length=2000)
     timeframe: Timeframe = "15m"

@@ -4,6 +4,7 @@ from __future__ import annotations
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 
+from core.tick_audit import audit_bar_vs_tick
 from core.tick_replay import run_tick_replay
 from dashboard.state import (
     ALL_STRATEGIES,
@@ -155,5 +156,46 @@ def timemachine(req: TimeMachineReq):
         },
         "simulation": sim,
         "history": hist,
+        "market": snapshot.metadata(),
+    }
+
+
+@router.post("/api/backtest/audit")
+def backtest_audit(req: BacktestReq):
+    """Bar backtest + per-tick audit: hold the bar fills accountable against
+    the real recorded tick archive. Returns bar metrics, tick metrics, the
+    per-trade comparison and an honest verdict."""
+    if req.strategy not in ALL_STRATEGIES:
+        raise HTTPException(400, f"unknown strategy: {req.strategy}")
+    allowed = set(PARAM_GRID.get(req.strategy, {}).keys())
+    params = {key: value for key, value in req.params.items() if key in allowed}
+    snapshot = fetch_market_data(req.timeframe, req.bars, allow_synthetic=False)
+    df = snapshot.data
+    tf_label = infer_tf_label(df.index)
+
+    cfg = StrategyConfig(
+        risk_pct=req.risk_pct,
+        rr=req.rr,
+        sl_method=req.sl_method,
+        sl_atr_mult=req.sl_atr_mult,
+        sl_fixed=req.sl_fixed,
+        or_bars=req.or_bars,
+        session=req.session,
+        max_trades_per_day=req.max_trades_per_day,
+        daily_loss_limit_pct=req.daily_loss_limit_pct,
+    )
+    try:
+        strategy = ALL_STRATEGIES[req.strategy](cfg, **params)
+        audit = audit_bar_vs_tick(df, strategy, cfg)
+        equity, trades = run_backtest(df[["open", "high", "low", "close", "volume"]],
+                                      strategy, cfg)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    return {
+        "metrics": compute_metrics(equity, trades, cfg, tf_label),
+        "equity": equity_to_curve(equity),
+        "trades": trades_to_records(trades),
+        "audit": audit,
         "market": snapshot.metadata(),
     }
