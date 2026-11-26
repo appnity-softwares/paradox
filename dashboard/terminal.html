@@ -1600,11 +1600,14 @@ async function runBacktest() {
     const m = r.metrics || {};
     const cols = ['Return %', 'Win Rate %', 'Profit Factor', 'Sharpe',
                   'Max DD %', 'Total Trades', 'RR (realized)', 'Net P&L $'];
+    const COUNTS = new Set(['Total Trades', 'Max Trades/Day', 'Con. Wins', 'Con. Losses', 'Data Days']);
+    const fmt = (c, v) => COUNTS.has(c) ? String(Math.round(v))
+      : typeof v === 'number' ? v.toFixed(2) : esc(v ?? '—');
     $('bt-metric-cards').innerHTML = cols.map(c =>
-      `<div class="stat"><div class="k">${esc(c)}</div><div class="v mono">${
-        typeof m[c] === 'number' ? m[c].toFixed(2) : esc(m[c] ?? '—')}</div></div>`).join('');
-    const extra = Object.entries(m).filter(([k]) => !cols.includes(k))
-      .map(([k, v]) => `${k}: ${typeof v === 'number' ? v.toFixed(3) : v}`).join('\n');
+      `<div class="stat"><div class="k">${esc(c)}</div><div class="v mono">${fmt(c, m[c])}</div></div>`).join('')
+      + (m['Sharpe Note'] ? `<div class="stat" style="grid-column:1/-1"><div class="k" style="color:#e0b64f">⚠ Sharpe warning</div><div class="v" style="font-size:12px;color:#e0b64f">${esc(m['Sharpe Note'])}</div></div>` : '');
+    const extra = Object.entries(m).filter(([k]) => !cols.includes(k) && k !== 'Sharpe Note')
+      .map(([k, v]) => `${k}: ${typeof v === 'number' ? (Number.isInteger(v) ? v : +v.toFixed(3)) : v}`).join('\n');
     $('bt-extra').textContent = extra;
     renderBreakdown(r.audit && r.audit.bar);
     renderAudit(r.audit);

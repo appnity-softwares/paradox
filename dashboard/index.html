@@ -3566,13 +3566,18 @@
 
       // Metrics Table
       let rows = "";
+      const COUNT_KEYS = new Set(["Total Trades", "Max Trades/Day", "Con. Wins", "Con. Losses", "Data Days"]);
       METRIC_COLS.forEach(c => {
         if (c in m) {
           const val = m[c];
           const isNum = typeof val === "number";
-          rows += `<tr><td>${esc(c)}</td><td class="${isNum && val >= 0 ? "pos" : isNum && val < 0 ? "neg" : ""}">${esc(isNum ? val.toFixed(2) : val)}</td></tr>`;
+          const shown = isNum ? (COUNT_KEYS.has(c) ? String(Math.round(val)) : val.toFixed(2)) : val;
+          rows += `<tr><td>${esc(c)}</td><td class="${isNum && val >= 0 ? "pos" : isNum && val < 0 ? "neg" : ""}">${esc(shown)}</td></tr>`;
         }
       });
+      if (m["Sharpe Note"]) {
+        rows += `<tr><td colspan="2" style="color:#e0b64f">⚠ ${esc(m["Sharpe Note"])}</td></tr>`;
+      }
       document.getElementById("metricsBody").innerHTML = rows;
 
       // Trade Log

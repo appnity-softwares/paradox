@@ -42,6 +42,15 @@ def compute_metrics(equity: pd.Series, trades: pd.DataFrame, cfg, tf_label: str)
     else:
         rets = equity.pct_change().dropna()
     sharpe = float(rets.mean() / rets.std(ddof=1) * np.sqrt(252)) if len(rets) > 1 and rets.std(ddof=1) > 0 else 0.0
+    # Annualized Sharpe from a short window is statistically meaningless:
+    # 16 daily returns can produce Sharpe 4+ from pure luck. Report the
+    # sample length so the UI can flag it instead of flattering the user.
+    data_days = 0
+    if isinstance(equity.index, pd.DatetimeIndex) and len(equity.index) > 1:
+        data_days = max(1, int((equity.index[-1] - equity.index[0]).total_seconds() / 86400))
+    sharpe_note = None
+    if data_days < 30:
+        sharpe_note = f"only {data_days} days of data — annualized Sharpe is not trustworthy yet"
 
     # Max trades per day (actual)
     if "entry_time" in trades.columns:
@@ -74,6 +83,8 @@ def compute_metrics(equity: pd.Series, trades: pd.DataFrame, cfg, tf_label: str)
         "Max DD %": round(max_dd, 1),
         "Total Trades": total,
         "Sharpe": rounded(sharpe),
+        "Data Days": data_days,
+        "Sharpe Note": sharpe_note,
         "Profit Factor": rounded(profit_factor),
         "RR (realized)": rounded(rr_realized),
         "Max Trades/Day": max_trades_day,
