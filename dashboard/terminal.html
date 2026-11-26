@@ -869,7 +869,7 @@ document.querySelectorAll('.btab').forEach(t => t.addEventListener('click', () =
   $('bt-tape').style.display = t.dataset.bt === 'tape' ? '' : 'none';
   $('bt-log').style.display = t.dataset.bt === 'log' ? '' : 'none';
   if (t.dataset.bt === 'log') {
-    api('/api/trade/account').then(a => {
+    api('/api/paper/account').then(a => {
       $('bt-log').textContent =
         `balance      $${Number(a.balance).toFixed(2)}
 ` +
@@ -893,25 +893,24 @@ document.querySelectorAll('.btab').forEach(t => t.addEventListener('click', () =
 /* ── trade desk ────────────────────────────────────────── */
 async function refreshAccount() {
   try {
-    const a = await api('/api/trade/account');
+    const a = await api('/api/paper/account');
     $('ts-equity').textContent = '$' + Number(a.equity).toFixed(2);
     $('ts-balance').textContent = '$' + Number(a.balance).toFixed(2);
     const fl = Number(a.floating_pnl || 0);
     const tf2 = $('ts-float');
     tf2.textContent = (fl >= 0 ? '+$' : '-$') + Math.abs(fl).toFixed(2);
     tf2.className = 'v ' + (fl >= 0 ? 'up' : 'down');
-    $('ts-margin').textContent = '$' + Number(a.free_margin).toFixed(2);
-    $('pos-badge').textContent = a.open_positions_count;
-    $('ac-mlevel').textContent = Number(a.margin_level).toFixed(0) + '%';
+    $('ts-margin').textContent = '$' + Number(a.balance).toFixed(2);
+    $('pos-badge').textContent = a.open_positions;
     const ke = $('ac-kill');
     ke.textContent = a.kill_switch_active ? 'ENGAGED' : 'normal';
     ke.className = a.kill_switch_active ? 'down' : 'up';
-    $('ac-open').textContent = a.open_positions_count;
+    $('ac-open').textContent = a.open_positions;
   } catch (e) {}
 }
 async function refreshPositions() {
   try {
-    const r = await api('/api/trade/positions');
+    const r = await api('/api/paper/positions');
     const ps = r.positions || [];
     $('pos-table').innerHTML = ps.length
       ? `<tr><th>Ticket</th><th>Side</th><th>Lots</th><th>Open</th><th>PnL</th><th></th></tr>` +
@@ -931,20 +930,20 @@ async function sendOrder(side) {
   const fb = $('od-feedback');
   fb.innerHTML = `<span style="color:var(--accent)">Sending ${side} ${$('od-vol').value} lot order…</span>`;
   try {
-    const res = await api('/api/trade/order', {method: 'POST',
+    const res = await api('/api/paper/order', {method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({symbol: activeSymbol, side, volume: parseFloat($('od-vol').value),
         sl: parseFloat($('od-sl').value), tp: parseFloat($('od-tp').value),
         mode: 'paper', comment: 'Terminal-' + side})});
-    fb.innerHTML = res.success
-      ? `<span class="up">✓ ${side} ${activeSymbol} filled @ ${Number(res.filled_price).toFixed(symMeta(activeSymbol).digits)} (ticket #${res.order_id})</span>`
+    fb.innerHTML = res.ok
+      ? `<span class="up">✓ ${side} ${activeSymbol} filled @ ${Number(res.filled_price).toFixed(symMeta(activeSymbol).digits)} (paper ticket #${res.ticket})</span>`
       : `<span class="down">✗ ${esc(res.error || res.detail || 'order rejected')}</span>`;
     refreshAccount(); refreshPositions();
   } catch (e) { fb.innerHTML = `<span class="down">✗ ${esc(e.message)}</span>`; }
 }
 async function closePos(ticket) {
   try {
-    await api('/api/trade/close', {method: 'POST',
+    await api('/api/paper/close', {method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ticket: parseInt(ticket), reason: 'Manual close from terminal'})});
     refreshAccount(); refreshPositions();
@@ -952,7 +951,7 @@ async function closePos(ticket) {
 }
 async function closeAll() {
   try {
-    await api('/api/trade/close_all', {method: 'POST'});
+    await api('/api/paper/close_all', {method: 'POST'});
     refreshAccount(); refreshPositions();
   } catch (e) { alert('Close-all failed: ' + e.message); }
 }
@@ -1318,7 +1317,7 @@ function drawMarkers() {
 }
 async function loadMarkers() {
   try {
-    const r = await api('/api/trade/positions');
+    const r = await api('/api/paper/positions');
     const times = chartData.map(b => b.time);
     posMarkers = (r.positions || []).map(pos => {
       const openS = Math.floor(new Date(pos.opened_at || Date.now()).getTime() / 1000);

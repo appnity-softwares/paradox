@@ -124,58 +124,29 @@ async def _risk_engine_handler(message: AgentMessage) -> AgentMessage | None:
         correlation_id=message.id,
     )
 async def _execution_engine_handler(message: AgentMessage) -> AgentMessage | None:
-    """Handle execution requests from agents."""
+    """Handle execution requests from agents.
+
+    U0-hardening: the agent bus is NOT an order path. Orders are only accepted
+    through POST /api/platform/orders (the platform order router: risk + compliance +
+    mode gate + ApprovedOrder). Mutating actions received here are refused
+    with an explicit pointer — they are never forwarded to any engine.
+    """
     payload = message.payload
     action = payload.get("action", "")
 
-    if action == "place_market_order":
-        result = EXECUTION_ENGINE.place_market_order(
-            symbol=payload.get("symbol", "XAUUSD"),
-            side=payload.get("side", "BUY"),
-            volume=float(payload.get("volume", 0.01)),
-            sl=float(payload.get("sl", 0.0)),
-            tp=float(payload.get("tp", 0.0)),
-            strategy_name=payload.get("strategy_name", "unknown"),
-            comment=payload.get("comment", "AI-Quant"),
-        )
+    if action in ("place_market_order", "close_position", "update_sl_tp",
+                  "emergency_kill_switch", "close_all_positions"):
         return AgentMessage(
             sender="execution_engine",
             receiver=message.sender,
             msg_type=MessageType.RESPONSE,
             payload={
-                "success": result.success,
-                "order_id": result.order_id,
-                "filled_price": result.filled_price,
-                "volume": result.volume,
-                "reason": result.reason,
+                "success": False,
+                "order_id": None,
+                "error": ("order actions are not accepted over the agent bus; "
+                          "use POST /api/platform/orders (the platform order router)"),
+                "refused_action": action,
             },
-            correlation_id=message.id,
-        )
-
-    if action == "close_position":
-        result = EXECUTION_ENGINE.close_position(
-            position_id=int(payload.get("position_id", 0)),
-            reason=payload.get("reason", "Manual close"),
-        )
-        return AgentMessage(
-            sender="execution_engine",
-            receiver=message.sender,
-            msg_type=MessageType.RESPONSE,
-            payload=result,
-            correlation_id=message.id,
-        )
-
-    if action == "update_sl_tp":
-        result = EXECUTION_ENGINE.update_sl_tp(
-            position_id=int(payload.get("position_id", 0)),
-            sl=float(payload.get("sl", 0.0)),
-            tp=float(payload.get("tp", 0.0)),
-        )
-        return AgentMessage(
-            sender="execution_engine",
-            receiver=message.sender,
-            msg_type=MessageType.RESPONSE,
-            payload=result,
             correlation_id=message.id,
         )
 
@@ -189,16 +160,6 @@ async def _execution_engine_handler(message: AgentMessage) -> AgentMessage | Non
             correlation_id=message.id,
         )
 
-    if action == "emergency_kill_switch":
-        result = EXECUTION_ENGINE.emergency_kill_switch()
-        return AgentMessage(
-            sender="execution_engine",
-            receiver=message.sender,
-            msg_type=MessageType.RESPONSE,
-            payload=result,
-            correlation_id=message.id,
-        )
-
     return AgentMessage(
         sender="execution_engine",
         receiver=message.sender,
@@ -206,6 +167,7 @@ async def _execution_engine_handler(message: AgentMessage) -> AgentMessage | Non
         payload={"error": f"Unknown execution action: {action}"},
         correlation_id=message.id,
     )
+
 async def _optimization_engine_handler(message: AgentMessage) -> AgentMessage | None:
     """Handle optimization requests from agents."""
     payload = message.payload

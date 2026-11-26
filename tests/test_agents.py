@@ -141,7 +141,9 @@ class ExecutionAgentFlowTests(unittest.TestCase):
             correlation_id=message.id,
         )
 
-    def test_execution_agent_kill_switch_closes_positions(self):
+    def test_execution_agent_refuses_kill_switch(self):
+        """U0-hardening: the agent bus is not an order path. Mutating actions
+        must be refused with a pointer to the ExecutionRouter, never executed."""
         import asyncio
 
         from core.orchestrator import AgentMessage, MessageType
@@ -154,8 +156,9 @@ class ExecutionAgentFlowTests(unittest.TestCase):
         )
         response = asyncio.run(self.orch.route(msg))
         self.assertIsNotNone(response)
-        self.assertTrue(response.payload.get("success"))
-        self.assertTrue(response.payload.get("killed"))
+        self.assertFalse(response.payload.get("success"))
+        self.assertTrue(response.payload.get("refused"))
+        self.assertIn("/api/platform/orders", response.payload.get("reason", ""))
 
 
 class AgentApiTests(unittest.TestCase):

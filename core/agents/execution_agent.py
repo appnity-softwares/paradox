@@ -1,11 +1,10 @@
-"""Execution Agent - Trade approval, execution and management.
+"""Execution Agent - trade-proposal ANALYSIS only.
 
-Responsibilities:
-- Receive trade proposals from other agents/strategies
-- Route through Compliance Agent for permission checks
-- Execute via deterministic execution engine (MT5/Broker)
-- Manage open positions (SL/TP updates, partial closes, emergency close)
-- NEVER makes risk decisions - only executes approved orders
+This agent does not place, modify or close any order. Order actions are
+refused with an explicit pointer to the single safe path (POST
+/api/platform/orders, the platform order router with risk, compliance and
+the mode gate). The agent bus is not an order path and must never become
+one.
 """
 from __future__ import annotations
 
@@ -60,16 +59,16 @@ class ExecutionAgent(BaseAgent):
             return await self._handle_place_order(message, payload)
 
         if action == "close_position":
-            return await self._handle_close_position(message, payload)
+            return await self._refuse_mutating(message, "close_position")
 
         if action == "update_sl_tp":
-            return await self._handle_update_sl_tp(message, payload)
+            return await self._refuse_mutating(message, "update_sl_tp")
 
         if action == "get_positions":
             return await self._handle_get_positions(message)
 
         if action == "emergency_kill_switch":
-            return await self._handle_kill_switch(message)
+            return await self._refuse_mutating(message, "emergency_kill_switch")
 
         return AgentMessage(
             sender=self.agent_id,
@@ -80,6 +79,23 @@ class ExecutionAgent(BaseAgent):
         )
 
     async def _handle_place_order(self, message: AgentMessage, payload: dict) -> AgentMessage | None:
+        return await self.reply_to(message, {
+            "success": False,
+            "order_id": None,
+            "refused": True,
+            "reason": ("orders are not accepted via the agent bus; "
+                       "use POST /api/platform/orders (the platform order router)"),
+        })
+
+    async def _refuse_mutating(self, message: AgentMessage, action: str) -> AgentMessage | None:
+        return await self.reply_to(message, {
+            "success": False,
+            "refused": True,
+            "reason": (f"{action} is not accepted via the agent bus; "
+                       "use POST /api/platform/orders (the platform order router)"),
+        })
+
+    async def _unused_place_order(self, message: AgentMessage, payload: dict) -> AgentMessage | None:
         # Step 1: Send to Compliance Agent for permission
         compliance_msg = await self.orchestrator.route(
             AgentMessage(

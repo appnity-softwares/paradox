@@ -4,9 +4,15 @@ Replays the same execution semantics as the backtester without sending real
 orders:
 
 1. Signal is taken from the PREVIOUS bar and acted at the CURRENT bar open.
-2. Fills happen at bar open + slippage (spread is tracked separately).
-3. SL is evaluated before TP at the current bar high/low.
-4. Opposite signal exits the open position.
+2. Entries pay half the spread plus slippage; exits pay it again (round trip
+   = full spread, like a real account).
+3. SL is evaluated before TP at the current bar high/low. SL fills AT the
+   stop (or at the open if price gapped through it — the worse price);
+   TP fills at the target (or at the open if price gapped through it —
+   the better price, as a real limit fill would).
+4. Opposite signal exits the open position at the open, paying spread.
+5. PnL is booked in account currency: price_move x volume(lots) x
+   contract_size (XAUUSD 1 lot = 100 oz).
 
 Until the MT5 broker connector is live, this engine runs strategies against
 real fetched market data (Yahoo on Mac) and keeps positions/PnL/risk state.
@@ -58,12 +64,15 @@ class PaperTradingEngine:
         cost_model: CostModel | None = None,
         starting_equity: float = 100_000.0,
         symbol: str = "XAUUSD",
+        contract_size: float = 100.0,   # XAUUSD: 1 lot = 100 oz
     ):
         self.risk = risk if risk is not None else RiskEngine()
         # Costs come from the typed CostModel, never from literals here.
         self.cost_model = cost_model if cost_model is not None else get_cost_model(symbol)
         self.spread = self.cost_model.spread_price()
+        self.half_spread = self.spread / 2.0
         self.slippage = self.cost_model.slippage.market_points
+        self.contract_size = float(contract_size)
         self.starting_equity = starting_equity
         self.equity = starting_equity
         self.kill_switch_active = False
@@ -150,7 +159,10 @@ class PaperTradingEngine:
         self.kill_switch_active = True
         closed = 0
         for p in list(self.positions):
-            trade = self._close_position(p, reason="KILL_SWITCH")
+            exit_price = self._market_exit_price(p.side)
+            if exit_price is None:
+                exit_price = p.sl if p.side == "LONG" else p.sl
+            trade = self._close_position(p, reason="KILL_SWITCH", exit_price=exit_price)
             if trade:
                 closed += 1
         return {"killed": True, "positions_closed": closed}
@@ -169,12 +181,81 @@ class PaperTradingEngine:
     def close_position(self, ticket: int, reason: str = "Manual close") -> dict:
         for p in list(self.positions):
             if p.ticket == ticket:
-                trade = self._close_position(p, reason=reason)
+                exit_price = self._market_exit_price(p.side)
+                if exit_price is None:
+                    return {"success": False, "reason": "no price seen yet"}
+                trade = self._close_position(p, reason=reason, exit_price=exit_price)
                 if trade:
                     return {"success": True, "ticket": ticket, "trade": trade}
         return {"success": False, "reason": "Position not found"}
 
     # ------------------------------------------------------------------ engine
+    def _market_exit_price(self, side: str) -> float | None:
+        """Last buffered close crossed with the exit spread (bid for a LONG,
+        ask for a SHORT). None when no bar has been seen yet."""
+        if not self._buffer:
+            return None
+        last = float(self._buffer[-1]["close"])
+        return last - (self.half_spread + self.slippage) if side == "LONG" \
+            else last + (self.half_spread + self.slippage)
+
+    # ------------------------------------------------------- manual desk
+    def manual_order(self, symbol: str, side: str, volume_lots: float,
+                     entry_price: float, sl_price: float, tp_price: float,
+                     strategy_name: str = "manual") -> dict:
+        """Open a manual paper position at an explicit fill price.
+
+        The caller supplies the real quote side: a BUY fills at the ask and a
+        SELL at the bid, so the spread is paid on entry — and again on exit.
+        Paper only; this method never touches a broker.
+        """
+        if self.kill_switch_active:
+            return {"ok": False, "error": "kill_switch_active"}
+        if self.risk.get_status()["blocked"]:
+            return {"ok": False, "error": "risk_blocked"}
+        side_u = str(side).upper()
+        if side_u not in ("BUY", "SELL"):
+            return {"ok": False, "error": "side must be BUY or SELL"}
+        try:
+            vol = float(volume_lots)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "invalid volume"}
+        if not (0 < vol <= 100):
+            return {"ok": False, "error": "invalid volume"}
+        entry, sl, tp = float(entry_price), float(sl_price), float(tp_price)
+        if entry <= 0:
+            return {"ok": False, "error": "no live quote"}
+        long = side_u == "BUY"
+        if long and not (sl < entry < tp):
+            return {"ok": False, "error": "SL/TP must bracket the entry for a BUY"}
+        if not long and not (tp < entry < sl):
+            return {"ok": False, "error": "SL/TP must bracket the entry for a SELL"}
+        if len(self.positions) >= 20:
+            return {"ok": False, "error": "max open paper positions reached"}
+        pos = PaperPosition(
+            ticket=self._next_ticket(),
+            symbol=str(symbol).upper(),
+            side="LONG" if long else "SHORT",
+            entry_price=entry,
+            sl=sl,
+            tp=tp,
+            volume=vol,
+            strategy_name=strategy_name,
+            opened_at=pd.Timestamp.now(tz="UTC").isoformat(),
+        )
+        self.positions.append(pos)
+        return {"ok": True, "ticket": pos.ticket, "filled_price": entry,
+                "volume": vol, "sl": sl, "tp": tp, "side": pos.side}
+
+    def manual_close(self, ticket: int, exit_price: float) -> dict:
+        """Close a paper position at an explicit exit price (bid for a LONG,
+        ask for a SHORT — the caller picks the quote side)."""
+        pos = next((p for p in self.positions if p.ticket == int(ticket)), None)
+        if pos is None:
+            return {"ok": False, "error": "unknown ticket"}
+        trade = self._close_position(pos, "MANUAL", float(exit_price))
+        return {"ok": True, "trade": trade}
+
     def _atr(self, highs: list[float], lows: list[float], closes: list[float]) -> float:
         if len(closes) < 2:
             return 0.0
@@ -203,14 +284,13 @@ class PaperTradingEngine:
         last = float(sig.iloc[-1]) if len(sig) else 0.0
         return 0.0 if len(self._buffer) <= int(getattr(self._strategy, "warmup", 60)) else last
 
-    def _close_position(self, pos: PaperPosition, reason: str) -> PaperTrade | None:
-        if reason == "TP":
-            exit_price = pos.tp
-        elif reason == "SL":
-            exit_price = pos.sl
-        else:
-            exit_price = pos.entry_price  # signal/market-style close approximation
-        pnl = (exit_price - pos.entry_price) * (1 if pos.side == "LONG" else -1) * pos.volume
+    def _close_position(self, pos: PaperPosition, reason: str, exit_price: float | None = None) -> PaperTrade | None:
+        if exit_price is None:
+            # No explicit exit price given (should not happen anymore): fall
+            # back to the level itself, never to a free entry-price exit.
+            exit_price = pos.tp if reason == "TP" else pos.sl
+        oz = pos.volume * self.contract_size
+        pnl = (exit_price - pos.entry_price) * (1 if pos.side == "LONG" else -1) * oz
         trade = PaperTrade(
             ticket=pos.ticket,
             symbol=pos.symbol,
@@ -256,7 +336,8 @@ class PaperTradingEngine:
             warmup_ok = len(self._buffer) > int(getattr(self._strategy, "warmup", 60))
             if sig != 0 and warmup_ok:
                 direction = "LONG" if sig > 0 else "SHORT"
-                entry = float(bar["open"]) + (self.slippage if direction == "LONG" else -self.slippage)
+                entry = float(bar["open"]) + (self.half_spread + self.slippage if direction == "LONG"
+                                              else -(self.half_spread + self.slippage))
                 atr = self._atr(
                     [b["high"] for b in self._buffer], [b["low"] for b in self._buffer], [b["close"] for b in self._buffer]
                 )
@@ -281,28 +362,58 @@ class PaperTradingEngine:
         if not self.positions:
             return None
 
-        pos = self.positions[-1]
-        close_price = None
-        reason = None
-        if pos.side == "LONG":
-            if float(bar["low"]) <= pos.sl + self.slippage:
-                close_price, reason = float(bar["open"]) - self.slippage, "SL"
-            elif float(bar["high"]) >= pos.tp - self.slippage:
-                close_price, reason = float(bar["open"]) + self.slippage, "TP"
-        else:
-            if float(bar["high"]) >= pos.sl - self.slippage:
-                close_price, reason = float(bar["open"]) + self.slippage, "SL"
-            elif float(bar["low"]) <= pos.tp + self.slippage:
-                close_price, reason = float(bar["open"]) - self.slippage, "TP"
+        o = float(bar["open"])
+        lo, hi = float(bar["low"]), float(bar["high"])
 
-        if close_price is None and self._last_signal != 0 and ((pos.side == "LONG") != (self._last_signal > 0)):
-            close_price = float(bar["open"]) - self.slippage if pos.side == "LONG" else float(bar["open"]) + self.slippage
-            reason = "SIGNAL"
+        # SL/TP for EVERY open position (manual desk positions included).
+        closed_trade = None
+        still_open = []
+        for pos in self.positions:
+            close_price = None
+            reason = None
+            if pos.side == "LONG":
+                # SL first (conservative). Gap through the stop fills at the
+                # open (worse); otherwise the stop itself, minus exit costs.
+                if o <= pos.sl:
+                    close_price, reason = o - self.slippage, "SL"
+                elif lo <= pos.sl:
+                    close_price, reason = pos.sl - self.half_spread - self.slippage, "SL"
+                # TP is a limit: gap through fills at the open (better).
+                elif o >= pos.tp:
+                    close_price, reason = o, "TP"
+                elif hi >= pos.tp:
+                    close_price, reason = pos.tp, "TP"
+            else:
+                if o >= pos.sl:
+                    close_price, reason = o + self.slippage, "SL"
+                elif hi >= pos.sl:
+                    close_price, reason = pos.sl + self.half_spread + self.slippage, "SL"
+                elif o <= pos.tp:
+                    close_price, reason = o, "TP"
+                elif lo <= pos.tp:
+                    close_price, reason = pos.tp, "TP"
+            if close_price is None:
+                still_open.append(pos)
+                continue
+            trade = self._close_position(pos, reason, close_price)
+            if trade is not None and closed_trade is None:
+                closed_trade = trade
 
-        if close_price is None:
-            return None
+        # A flipped strategy signal closes only the strategy's own position,
+        # never a manual desk position.
+        if closed_trade is None and self._last_signal != 0:
+            for pos in still_open:
+                if pos.strategy_name == "manual":
+                    continue
+                if (pos.side == "LONG") != (self._last_signal > 0):
+                    exit_price = o - (self.half_spread + self.slippage) if pos.side == "LONG" \
+                        else o + (self.half_spread + self.slippage)
+                    closed_trade = self._close_position(pos, "SIGNAL", exit_price)
+                    still_open = [p for p in still_open if p.ticket != pos.ticket]
+                    break
 
-        return self._close_position(pos, reason)
+        self.positions = still_open
+        return closed_trade
 
     def _next_ticket(self) -> int:
         self._tick = getattr(self, "_tick", 1) + 1

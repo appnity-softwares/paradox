@@ -1,7 +1,7 @@
 """MT5 bridge: status, configuration, command polling and account info."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Request
 
 from dashboard.state import (
     DATA_MANAGER,
@@ -19,6 +19,18 @@ from dashboard.state import (
 )
 
 router = APIRouter(tags=["mt5"])
+
+# The MT5 bridge routes are machine-facing (the EA runs in the MT5 terminal on
+# this same machine) and stay unauthenticated for that reason — but they are
+# LOOPBACK-ONLY. Any non-local client is refused before touching state. The
+# extra names are what Starlette's TestClient reports as client host.
+_LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient", "testserver"}
+
+
+def _require_local(request: Request) -> None:
+    host = request.client.host if request.client else ""
+    if host not in _LOCAL_HOSTS:
+        raise HTTPException(403, "mt5 bridge routes accept local connections only")
 
 
 @router.get("/api/mt5/status")
@@ -58,7 +70,8 @@ def account_info():
 
 
 @router.post("/api/mt5/config")
-def mt5_config(payload: MT5ConfigPayload):
+def mt5_config(payload: MT5ConfigPayload, request: Request):
+    _require_local(request)
     """Save MT5 settings to .env, update runtime credentials, and probe MT5 connection."""
     from pathlib import Path
     env_path = Path(PROTOTYPE_ROOT) / ".env"
@@ -141,22 +154,28 @@ def mt5_config(payload: MT5ConfigPayload):
 
 
 @router.post("/api/mt5/tick")
-async def mt5_live_tick_webhook(payload: MT5LiveTickPayload):
-    """Receive real-time live tick directly from MT5 Expert Advisor (AI_Quant_Live_Bridge.mq5)."""
-    for p, _ in DATA_MANAGER.statuses:
-        if getattr(p, "record_live_tick", None):
-            p.record_live_tick(payload.dict())
-    
-    bid = float(payload.bid or (payload.last - 0.15 if payload.last else 3945.60))
-    ask = float(payload.ask or (payload.last + 0.15 if payload.last else 3945.90))
+async def mt5_live_tick_webhook(payload: MT5LiveTickPayload, request: Request):
+    """Receive a real-time tick from the MT5 Expert Advisor (AI_Quant_Live_Bridge.mq5).
+
+    Loopback-only. Honesty rules: a tick without a real bid/ask is REJECTED,
+    never filled with a hardcoded fallback; the EA's own timestamp is kept
+    when provided; the tick is labelled with what it actually is.
+    """
+    _require_local(request)
+    if not payload.bid or not payload.ask:
+        raise HTTPException(422, "tick rejected: real bid and ask are required "
+                                 "(no fallback price is invented here)")
+    bid, ask = float(payload.bid), float(payload.ask)
     EXECUTION_ENGINE.update_market_price(payload.symbol, bid, ask)
 
     now = datetime.now(timezone.utc)
+    ea_time_ms = int(payload.time_ms) if payload.time_ms else None
     tick_msg = {
         "type": "tick",
         "symbol": payload.symbol,
-        "time": now.isoformat(),
-        "time_ms": payload.time_ms or int(now.timestamp() * 1000),
+        "time": (datetime.fromtimestamp(ea_time_ms / 1000, tz=timezone.utc).isoformat()
+                 if ea_time_ms else now.isoformat()),
+        "time_ms": ea_time_ms or int(now.timestamp() * 1000),
         "bid": bid,
         "ask": ask,
         "price": payload.last or (bid + ask) / 2,
@@ -165,6 +184,7 @@ async def mt5_live_tick_webhook(payload: MT5LiveTickPayload):
         "is_real_tick": True,
         "delayed": False,
         "stale": False,
+        "time_source": "ea" if ea_time_ms else "arrival",
     }
     await MARKET_BROADCASTER.broadcast(tick_msg)
 
@@ -172,7 +192,8 @@ async def mt5_live_tick_webhook(payload: MT5LiveTickPayload):
 
 
 @router.get("/api/mt5/commands")
-def mt5_poll_commands():
+def mt5_poll_commands(request: Request):
+    _require_local(request)
     """Poll for pending execution commands queued by dashboard for Mac MT5 bridge."""
     try:
         import queue
@@ -189,7 +210,8 @@ def mt5_mac_status_endpoint():
 
 
 @router.post("/api/mt5/sync_mac")
-def mt5_sync_mac_endpoint(req: SyncMacReq):
+def mt5_sync_mac_endpoint(req: SyncMacReq, request: Request):
+    _require_local(request)
     """Sync an exported MT5 CSV into the real data cache for immediate backtesting."""
     status = get_mac_mt5_status()
     exported = status.get("exported_csvs", [])
