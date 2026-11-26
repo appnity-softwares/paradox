@@ -507,8 +507,13 @@
           <select id="bt-tf"><option>15m</option><option>5m</option><option>30m</option><option>1h</option></select></div>
         <div><label>Risk % / trade</label><input id="bt-risk" value="1.0"></div>
         <div><label>R : R</label><input id="bt-rr" value="2.0"></div>
+        <div><label>Execution model</label>
+          <select id="bt-mode" onchange="renderBtMode()">
+            <option value="candle">Candle (bar open fills)</option>
+            <option value="tick">Per-Tick (real bid/ask, full archive)</option>
+          </select></div>
         <div><label>SL method</label>
-          <select id="bt-slmethod"><option value="atr">ATR</option><option value="fixed">Fixed points</option></select></div>
+          <select id="bt-slmethod"><option value="atr">ATR</option><option value="fixed">Fixed points</option><option value="or_mid">OR Mid (structural)</option></select></div>
         <div><label>SL × ATR</label><input id="bt-slmult" value="1.5"></div>
         <div><label>SL fixed pts</label><input id="bt-slfixed" value="5.0"></div>
         <div><label>Session</label>
@@ -524,12 +529,42 @@
       </div>
       <div id="bt-params" class="fields"></div>
       <button class="btn primary" onclick="runBacktest()">Run backtest</button>
+      <button class="btn" onclick="entryCheck()">Entry check (now)</button>
+      <button class="btn" onclick="runTimeMachine()">Time Machine</button>
       <span class="muted" id="bt-status" style="margin-left:12px"></span>
+      <div class="muted" id="bt-mode-note" style="font-size:11px;margin-top:6px"></div>
     </div>
     <div class="card" id="bt-results" hidden>
       <h3>Results</h3>
       <div class="stats" id="bt-metric-cards"></div>
       <div class="out" id="bt-extra"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="display:flex;justify-content:space-between;align-items:center">
+        <span>Agent variant search</span>
+        <span class="muted" id="lab-badge" style="font-size:11px">IDLE</span></h3>
+      <p class="muted" style="font-size:12px;margin:0 0 10px">The optimization agent generates parameter variants,
+        backtests each in-sample, then validates survivors <b>out-of-sample</b>. IS-only winners are flagged
+        <span style="color:#e0b64f">overfit-risk</span>, never celebrated. Every run is stored.</p>
+      <div class="fields" style="grid-template-columns:1fr 160px">
+        <div><label>Strategy</label><select id="lab-strategy"></select></div>
+        <div><label>&nbsp;</label><button class="btn primary" style="width:100%" onclick="labStart()">Run search</button></div>
+      </div>
+      <div class="muted" id="lab-status" style="font-size:12px;margin:6px 0">No search running.</div>
+      <div style="max-height:260px;overflow-y:auto">
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead><tr style="color:var(--text-faint);text-align:left">
+            <th>#</th><th>Params</th><th>Status</th><th>IS Ret %</th><th>OOS Ret %</th><th>OOS Trades</th><th></th>
+          </tr></thead>
+          <tbody id="lab-body"><tr><td colspan="7" class="muted">—</td></tr></tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+        <span class="muted" style="font-size:12px">Stored runs:</span>
+        <select id="lab-runs" style="max-width:50%" onchange="labLoadRun()"></select>
+        <button class="btn" onclick="labRuns()" style="padding:2px 10px">↻</button>
+      </div>
     </div>
   </section>
 
@@ -620,7 +655,7 @@ async function api(url, opts) {
 /* ── tabs ──────────────────────────────────────────────── */
 const loaders = {
   terminal: () => { refreshAccount(); refreshPositions(); refreshPropFirm(); initPropFirmSelect(); refreshPropFirm(); loadMainChart(); loadDayStats(); loadVolatility(); loadFeedInfo(); loadTape(); tickClock(); },
-  strategy: () => {},
+  strategy: () => { labInit(); },
   propfirm: () => initPropFirm(),
   copilot: () => {},
   system: () => { loadAgents(); loadVertex(); loadCoverage(); loadMt5(); },
@@ -1539,19 +1574,24 @@ async function runBacktest() {
     if (el) params[k] = isNaN(Number(el.value)) ? el.value : Number(el.value);
   }
   $('bt-status').textContent = 'Running…';
+  const common = {strategy: s, params, timeframe: $('bt-tf').value,
+    risk_pct: parseFloat($('bt-risk').value) || 1.0,
+    rr: parseFloat($('bt-rr').value) || 2.0,
+    sl_method: $('bt-slmethod').value,
+    sl_atr_mult: parseFloat($('bt-slmult').value) || 1.5,
+    sl_fixed: parseFloat($('bt-slfixed').value) || 5.0,
+    or_bars: 3,
+    session: $('bt-session').value === 'asia' ? 'tokyo' : $('bt-session').value,
+    max_trades_per_day: parseInt($('bt-maxtrades').value) || 4,
+    daily_loss_limit_pct: parseFloat($('bt-maxloss').value) || 3.0};
   try {
-    const r = await api('/api/backtest', {method: 'POST',
+    const tick = $('bt-mode') && $('bt-mode').value === 'tick';
+    const r = await api(tick ? '/api/tick_replay' : '/api/backtest', {method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({strategy: s, params, timeframe: $('bt-tf').value,
-        risk_pct: parseFloat($('bt-risk').value) || 1.0,
-        rr_ratio: parseFloat($('bt-rr').value) || 2.0,
-        sl_method: $('bt-slmethod').value,
-        sl_mult: parseFloat($('bt-slmult').value) || 1.5,
-        sl_fixed_pts: parseFloat($('bt-slfixed').value) || 5.0,
-        session: $('bt-session').value,
-        max_trades_per_day: parseInt($('bt-maxtrades').value) || 4,
-        daily_loss_limit_pct: parseFloat($('bt-maxloss').value) || 3.0})});
-    $('bt-status').textContent = '✓ Done';
+      body: JSON.stringify(tick ? Object.assign(common, {bars: 2000}) : common)});
+    $('bt-status').textContent = tick
+      ? `✓ Done — ${(r.result.coverage.ticks_scanned || 0).toLocaleString()} ticks, real bid/ask fills`
+      : '✓ Done';
     const m = r.metrics || {};
     const cols = ['Total Return %', 'Win Rate %', 'Profit Factor', 'Sharpe Ratio',
                   'Max Drawdown %', 'Total Trades'];
@@ -1563,6 +1603,139 @@ async function runBacktest() {
     $('bt-extra').textContent = extra;
     $('bt-results').hidden = false;
   } catch (e) { $('bt-status').textContent = '⚠ ' + e.message; }
+}
+
+function renderBtMode() {
+  const m = $('bt-mode') ? $('bt-mode').value : 'candle';
+  const note = $('bt-mode-note');
+  if (note) note.textContent = m === 'tick'
+    ? 'Per-tick: fills at real recorded bid/ask — stop gaps fill worse, targets at level or better.'
+    : 'Candle: fills at next bar open ± half spread. Fast, but blind to intra-bar path.';
+}
+renderBtMode();
+
+/* ── trader tools: entry check + time machine ──────────── */
+async function entryCheck() {
+  const st = $('bt-status');
+  try {
+    const r = await api(`/api/entry/check?strategy=${encodeURIComponent($('bt-strategy').value)}&timeframe=15m`);
+    const col = r.state === 'TRIGGERED' ? 'var(--green)' : '#e0b64f';
+    st.innerHTML = `<span style="color:${col};font-weight:bold">● ${r.state}${r.side ? ' ' + r.side : ''}</span>` +
+      ` @ $${r.price} · last closed bar ${esc(r.last_closed_bar)}` +
+      `<br><span class="muted" style="font-size:10px">${esc(r.note)}</span>`;
+  } catch (e) { st.textContent = '⚠ ' + e.message; }
+}
+async function runTimeMachine() {
+  const entry = parseFloat(prompt('Entry price (XAUUSD):', '4400'));
+  if (isNaN(entry)) return;
+  const stop = parseFloat(prompt('Stop price:', String(entry - 5)));
+  if (isNaN(stop)) return;
+  const target = parseFloat(prompt('Target price:', String(entry + 10)));
+  if (isNaN(target)) return;
+  const st = $('bt-status');
+  st.textContent = 'Running 10,000 replays + past-session history…';
+  try {
+    const r = await api('/api/timemachine', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({entry, stop, target, side: target > entry ? 'buy' : 'sell',
+        replays: 10000, seed: 19, flat_by: '23:55', timeframe: '5m', bars: 8000})});
+    const sim = r.simulation, hist = r.history;
+    st.innerHTML = `<div style="text-align:left;line-height:1.7">` +
+      `<b>Time Machine</b> — ${sim.replays.toLocaleString()} replays from ${sim.pool_sessions} past sessions<br>` +
+      `Target first: <b style="color:var(--green)">${(sim.p_target * 100).toFixed(1)}%</b> · ` +
+      `Stop first: <b style="color:var(--red)">${(sim.p_stop * 100).toFixed(1)}%</b> · ` +
+      `Neither: ${(sim.p_neither * 100).toFixed(1)}%<br>` +
+      `Avg R: ${sim.avg_R} · Median close: ${sim.median_close} (5–95%: ${sim.p5_close} – ${sim.p95_close})<br>` +
+      `<b style="color:#e0b64f">${esc(sim.verdict || '—')}</b>` +
+      `<br><span class="muted">History: rule fired ${hist.triggered}× in ${hist.sessions} sessions — ` +
+      `${hist.target} target / ${hist.stop} stop / ${hist.neither} neither · avg R ${hist.avg_R ?? '—'}</span>` +
+      `<br><span class="muted" style="font-size:10px">Simulation from the instrument's own recent bars is not a prediction.</span></div>`;
+  } catch (e) { st.textContent = '⚠ ' + e.message; }
+}
+
+/* ── agent variant search (Strategy Lab) ───────────────── */
+let labTimer = null;
+async function labStart() {
+  const st = $('lab-status');
+  try {
+    const r = await api('/api/lab/start', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({strategy: $('lab-strategy').value, timeframe: '15m',
+        bars: 8000, max_variants: 24})});
+    st.textContent = `Search ${r.run_id} started…`;
+    if (labTimer) clearInterval(labTimer);
+    labTimer = setInterval(labPoll, 2000);
+    labPoll();
+  } catch (e) { st.textContent = '⚠ ' + e.message; }
+}
+async function labPoll() {
+  try {
+    const s = await api('/api/lab/status');
+    const badge = $('lab-badge'), st = $('lab-status');
+    if (s.note && !s.run_id) { badge.textContent = 'IDLE'; return; }
+    if (s.running) {
+      badge.textContent = `RUNNING ${s.done}/${s.total_variants}`;
+      st.innerHTML = `Testing <b>${esc(JSON.stringify(s.current_params || {}))}</b> — ${s.done}/${s.total_variants} done`;
+    } else {
+      badge.textContent = s.error ? 'ERROR' : `DONE ${s.done}/${s.total_variants}`;
+      if (!s.error && labTimer) { clearInterval(labTimer); labTimer = null; labRuns(); }
+      if (s.error) st.innerHTML = `<span style="color:var(--red)">⚠ ${esc(s.error)}</span>`;
+      else if (s.summary) {
+        const sm = s.summary;
+        st.innerHTML = `${sm.verified} verified · ${sm.overfit_risk} overfit-risk · ${sm.unmeasured} unmeasured` +
+          (sm.best ? ` · best OOS: <b style="color:var(--green)">${sm.best.oos_metrics['Return %']}%</b> ${esc(JSON.stringify(sm.best.params))}` : '');
+      }
+    }
+    if (s.results && s.results.length) labRender(s.results, null);
+  } catch (e) { /* transient */ }
+}
+function labRender(results, runId) {
+  const body = $('lab-body');
+  body.innerHTML = results.map((r, i) => {
+    const col = r.status === 'verified' ? 'var(--green)' :
+                r.status === 'overfit_risk' ? '#e0b64f' : 'var(--text-faint)';
+    const is = r.is_metrics ? r.is_metrics['Return %'] : '—';
+    const oos = r.oos_metrics ? r.oos_metrics['Return %'] : '—';
+    const oosT = r.oos_metrics ? r.oos_metrics['Total Trades'] : '—';
+    const promote = runId && r.status === 'verified'
+      ? `<button class="btn" style="padding:1px 8px;font-size:10px" onclick="labPromote('${runId}',${i})">paper</button>` : '';
+    return `<tr><td>${i + 1}</td><td class="mono">${esc(JSON.stringify(r.params))}</td>` +
+      `<td style="color:${col}">${r.status}</td><td class="mono">${is}</td>` +
+      `<td class="mono" style="color:${oos > 0 ? 'var(--green)' : 'var(--red)'}">${oos}</td>` +
+      `<td class="mono">${oosT}</td><td>${promote}</td></tr>`;
+  }).join('');
+}
+async function labRuns() {
+  try {
+    const r = await api('/api/lab/runs');
+    const sel = $('lab-runs');
+    sel.innerHTML = '<option value="">— stored runs —</option>' +
+      r.runs.map(x => `<option value="${esc(x.run_id)}">${esc(x.run_id)} (${x.verified_variants}/${x.variants})</option>`).join('');
+  } catch (e) { /* transient */ }
+}
+async function labLoadRun() {
+  const id = $('lab-runs').value;
+  if (!id) return;
+  try {
+    const run = await api(`/api/lab/run/${encodeURIComponent(id)}`);
+    labRender(run.results || [], id);
+    $('lab-status').textContent = `Stored run: ${run.summary.verified} verified of ${run.summary.variants}`;
+  } catch (e) { /* transient */ }
+}
+async function labPromote(runId, idx) {
+  if (!confirm('Load this variant into the PAPER engine? (simulation only)')) return;
+  try {
+    const r = await api(`/api/lab/promote/${encodeURIComponent(runId)}/${idx}`, {method: 'POST'});
+    alert(`Paper engine now running ${r.strategy} ${JSON.stringify(r.params)}\n(status: ${r.status})`);
+  } catch (e) { alert('Promote failed: ' + e.message); }
+}
+async function labInit() {
+  try {
+    const info = await api('/api/info');
+    const sel = $('lab-strategy');
+    sel.innerHTML = (info.strategies || []).map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  } catch (e) { /* transient */ }
+  labRuns();
 }
 
 /* ── AI strategy builder ───────────────────────────────── */
