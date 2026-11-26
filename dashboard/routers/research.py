@@ -28,6 +28,10 @@ def get_prop_firm_profiles():
     return {
         "profiles": [asdict(p) for p in PROP_FIRM_PROFILES.values()],
         "default": "ftmo_100k",
+        "disclaimer": ("Rule values are an UNVERIFIED snapshot from public "
+                       "information. Rules change often — confirm every "
+                       "number on the firm's own rules page before "
+                       "purchasing a challenge."),
     }
 
 

@@ -293,6 +293,9 @@
     </div>
     <span id="hdr-sessions"></span>
     <span class="badge grey" id="hdr-provider">—</span>
+    <select id="propfirm-select" title="Prop firm rules (UNVERIFIED data — confirm on the firm's site)" style="background:#14161c;color:var(--text);border:1px solid #2a2e38;border-radius:6px;padding:4px 8px;font-size:12px">
+      <option value="">Prop firm: none</option>
+    </select>
     <a class="hdr-link" href="/console">Console</a>
   </div>
 </header>
@@ -319,6 +322,9 @@
       <div class="ts-cell"><div class="k">Balance</div><div class="v" id="ts-balance">—</div></div>
       <div class="ts-cell"><div class="k">Floating PnL</div><div class="v" id="ts-float">—</div></div>
       <div class="ts-cell"><div class="k">Margin free</div><div class="v" id="ts-margin">—</div></div>
+      <div class="ts-cell"><div class="k">Firm Daily DD</div><div class="v" id="ts-firm-daily">—</div></div>
+      <div class="ts-cell"><div class="k">Firm Max DD</div><div class="v" id="ts-firm-total">—</div></div>
+      <div class="ts-cell"><div class="k">Firm Target</div><div class="v" id="ts-firm-target">—</div></div>
     </div>
 
     <div class="ws">
@@ -613,7 +619,7 @@ async function api(url, opts) {
 
 /* ── tabs ──────────────────────────────────────────────── */
 const loaders = {
-  terminal: () => { refreshAccount(); refreshPositions(); loadMainChart(); loadDayStats(); loadVolatility(); loadFeedInfo(); loadTape(); tickClock(); },
+  terminal: () => { refreshAccount(); refreshPositions(); refreshPropFirm(); initPropFirmSelect(); refreshPropFirm(); loadMainChart(); loadDayStats(); loadVolatility(); loadFeedInfo(); loadTape(); tickClock(); },
   strategy: () => {},
   propfirm: () => initPropFirm(),
   copilot: () => {},
@@ -891,6 +897,49 @@ document.querySelectorAll('.btab').forEach(t => t.addEventListener('click', () =
 }));
 
 /* ── trade desk ────────────────────────────────────────── */
+/* ── prop firm selection + live guard ─────────────────── */
+async function initPropFirmSelect() {
+  const sel = $('propfirm-select');
+  if (!sel || sel.dataset.loaded) return;
+  try {
+    const r = await api('/api/propfirms');
+    sel.dataset.loaded = '1';
+    sel.innerHTML = '<option value="">Prop firm: none</option>' +
+      (r.firms || []).map(f => {
+        const flag = f.verified ? '' : ' ⚠';
+        return `<option value="${esc(f.slug)}">${esc(f.name)}${flag} (${esc(f.confidence)})</option>`;
+      }).join('');
+    const st = await api('/api/propfirm/status');
+    if (st.selected) sel.value = st.selected;
+    sel.addEventListener('change', async () => {
+      await api('/api/propfirm/select', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: sel.value || null, phase_index: 0 }) });
+      refreshPropFirm();
+    });
+    refreshPropFirm();
+  } catch (e) { /* header selector is optional */ }
+}
+async function refreshPropFirm() {
+  const d = $('ts-firm-daily'), t = $('ts-firm-total'), g = $('ts-firm-target');
+  try {
+    const st = await api('/api/propfirm/status');
+    if (!st.selected) {
+      d.textContent = '—'; t.textContent = '—'; g.textContent = '—';
+      d.className = 'v'; t.className = 'v'; g.className = 'v';
+      return;
+    }
+    const ev = st.evaluation || {};
+    const flag = st.verified ? '' : ' ⚠';
+    d.textContent = `${(ev.daily_dd_used_pct ?? 0).toFixed(2)}% / ${ev.daily_dd_limit_pct ?? '—'}%${flag}`;
+    t.textContent = `${(ev.total_dd_used_pct ?? 0).toFixed(2)}% / ${ev.total_dd_limit_pct ?? '—'}%`;
+    g.textContent = ev.target_hit ? 'HIT ✓' : `${(ev.target_progress_pct ?? 0).toFixed(1)}%`;
+    const breached = st.kill_switch_active;
+    d.className = 'v ' + (breached ? 'down' : (ev.status === 'WARNING' ? 'down' : 'up'));
+    t.className = 'v ' + (breached ? 'down' : 'up');
+    g.className = 'v ' + (ev.target_hit ? 'up' : '');
+  } catch (e) { d.textContent = '—'; t.textContent = '—'; g.textContent = '—'; }
+}
 async function refreshAccount() {
   try {
     const a = await api('/api/paper/account');
@@ -938,7 +987,7 @@ async function sendOrder(side) {
     fb.innerHTML = res.ok
       ? `<span class="up">✓ ${side} ${activeSymbol} filled @ ${Number(res.filled_price).toFixed(symMeta(activeSymbol).digits)} (paper ticket #${res.ticket})</span>`
       : `<span class="down">✗ ${esc(res.error || res.detail || 'order rejected')}</span>`;
-    refreshAccount(); refreshPositions();
+    refreshAccount(); refreshPositions(); refreshPropFirm();
   } catch (e) { fb.innerHTML = `<span class="down">✗ ${esc(e.message)}</span>`; }
 }
 async function closePos(ticket) {
@@ -946,13 +995,13 @@ async function closePos(ticket) {
     await api('/api/paper/close', {method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ticket: parseInt(ticket), reason: 'Manual close from terminal'})});
-    refreshAccount(); refreshPositions();
+    refreshAccount(); refreshPositions(); refreshPropFirm();
   } catch (e) { alert('Close failed: ' + e.message); }
 }
 async function closeAll() {
   try {
     await api('/api/paper/close_all', {method: 'POST'});
-    refreshAccount(); refreshPositions();
+    refreshAccount(); refreshPositions(); refreshPropFirm();
   } catch (e) { alert('Close-all failed: ' + e.message); }
 }
 
@@ -1573,6 +1622,9 @@ async function initPropFirm() {
 function renderPfRules() {
   const p = PF_PROFILES.find(x => x.id === $('pf-profile').value);
   if (!p) return;
+  const vflag = p.verified
+    ? '<span style="color:var(--green)">verified</span>'
+    : `<span style="color:#e0b64f" title="Rules not checked against the firm's own site">⚠ UNVERIFIED (${esc(p.confidence || 'low')} confidence)</span>`;
   const tgt = p.initial_balance * p.profit_target_pct / 100;
   const dl = p.initial_balance * p.max_daily_loss_pct / 100;
   const ml = p.initial_balance * p.max_total_loss_pct / 100;
@@ -1584,7 +1636,8 @@ function renderPfRules() {
      <tr><td>Min trading days</td><td class="mono">${p.min_trading_days}</td></tr>
      <tr><td>Leverage</td><td class="mono">${esc(p.leverage || '1:100')}</td></tr>
      <tr><td>News trading</td><td>${p.news_trading_allowed ? 'allowed' : 'blocked'}</td></tr>
-     <tr><td>Weekend holding</td><td>${p.weekend_holding_allowed ? 'allowed' : 'blocked'}</td></tr></table>`;
+     <tr><td>Weekend holding</td><td>${p.weekend_holding_allowed ? 'allowed' : 'blocked'}</td></tr>
+     <tr><td>Data status</td><td>${vflag}</td></tr></table>`;
 }
 async function runPfSim() {
   $('pf-status').textContent = 'Running Monte-Carlo resamples…';
@@ -1704,7 +1757,7 @@ async function loadMt5() {
   pollQuote();
   loaders.terminal();
 })();
-setInterval(() => { refreshAccount(); refreshPositions(); }, 10000);
+setInterval(() => { refreshAccount(); refreshPositions(); refreshPropFirm(); }, 10000);
 </script>
 </body>
 </html>

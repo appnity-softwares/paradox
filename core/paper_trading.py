@@ -84,6 +84,16 @@ class PaperTradingEngine:
         self._buffer: list[dict] = []
         self._last_signal = 0.0
         self._warmup_bars = 0
+        # Prop-firm accounting (daily reset, peak equity, trading days).
+        # Populated only when a prop firm is selected in the dashboard; the
+        # arithmetic itself lives in core/prop_firms.py.
+        self.peak_equity = starting_equity
+        self.day_start_equity = starting_equity
+        self.day_pnl = 0.0
+        self.best_day_pnl = 0.0
+        self.trading_days = 0
+        self._day_key: str | None = None
+        self._day_had_activity = False
 
     # ------------------------------------------------------------------ setup
     def start(self, strategy, cfg: StrategyConfig, symbol: str = "XAUUSD"):
@@ -96,6 +106,13 @@ class PaperTradingEngine:
         self.trades = []
         self.equity = self.starting_equity
         self.kill_switch_active = False
+        self.peak_equity = self.starting_equity
+        self.day_start_equity = self.starting_equity
+        self.day_pnl = 0.0
+        self.best_day_pnl = 0.0
+        self.trading_days = 0
+        self._day_key = None
+        self._day_had_activity = False
         warmup = getattr(strategy, "warmup", 60)
         self._warmup_bars = int(warmup)
         return self.get_status()
@@ -152,6 +169,13 @@ class PaperTradingEngine:
             "equity": round(self.equity, 2),
             "realized_pnl": round(sum(t.pnl for t in self.trades), 2),
             "risk": risk_status,
+            # prop-firm accounting
+            "initial_balance": self.starting_equity,
+            "peak_equity": round(self.peak_equity, 2),
+            "day_start_equity": round(self.day_start_equity, 2),
+            "day_pnl": round(self.day_pnl, 2),
+            "best_day_pnl": round(self.best_day_pnl, 2),
+            "trading_days": self.trading_days,
         }
 
     # ------------------------------------------------------------------ control
@@ -244,6 +268,7 @@ class PaperTradingEngine:
             opened_at=pd.Timestamp.now(tz="UTC").isoformat(),
         )
         self.positions.append(pos)
+        self._day_had_activity = True
         return {"ok": True, "ticket": pos.ticket, "filled_price": entry,
                 "volume": vol, "sl": sl, "tp": tp, "side": pos.side}
 
@@ -305,6 +330,12 @@ class PaperTradingEngine:
         )
         self.trades.append(trade)
         self.equity += pnl
+        self.day_pnl += pnl
+        self._day_had_activity = True
+        if self.equity > self.peak_equity:
+            self.peak_equity = self.equity
+        if self.day_pnl > self.best_day_pnl:
+            self.best_day_pnl = self.day_pnl
         try:
             self.risk.record_trade_result(pnl / max(self.equity - pnl, 1e-9) * 100)
         except Exception:
@@ -312,7 +343,25 @@ class PaperTradingEngine:
         self.positions = [p for p in self.positions if p.ticket != pos.ticket]
         return trade
 
+    def _roll_trading_day(self, bar_time) -> None:
+        """Prop-firm day accounting: reset the daily PnL window at midnight
+        UTC and count a trading day once it saw a fill or close."""
+        try:
+            ts = pd.Timestamp(bar_time)
+            day = ts.tz_convert("UTC").date() if ts.tzinfo is not None else ts.date()
+        except Exception:
+            return
+        key = day.isoformat()
+        if key != self._day_key:
+            if self._day_key is not None and self._day_had_activity:
+                self.trading_days += 1
+            self._day_key = key
+            self._day_had_activity = False
+            self.day_start_equity = self.equity
+            self.day_pnl = 0.0
+
     def process_bar(self, bar: dict) -> PaperTrade | None:
+        self._roll_trading_day(bar.get("time"))
         """Feed one bar (time/open/high/low/close/volume) and execute pending signals."""
         if self.kill_switch_active or self._strategy is None or self._cfg is None:
             return None

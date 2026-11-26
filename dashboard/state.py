@@ -233,6 +233,63 @@ RISK_ENGINE = RiskEngine(max_risk_pct=2.0, max_daily_loss_pct=5.0, max_leverage=
 EXECUTION_ENGINE = ExecutionEngine(broker_connector=None)  # simulation/paper mode
 OPTIMIZATION_ENGINE = OptimizationEngine()
 PAPER_ENGINE = PaperTradingEngine()
+
+# Selected prop-firm ruleset (None = no prop-firm guard active).
+PROP_FIRM_SELECTION: dict = {"slug": None, "phase_index": 0}
+
+
+def prop_firm_state() -> dict:
+    """Build the evaluator's account state from the live paper engine."""
+    eng = PAPER_ENGINE
+    return {
+        "initial_balance": eng.starting_equity,
+        "day_start_balance": eng.day_start_equity,
+        "day_start_equity": eng.day_start_equity,
+        "balance": eng.equity,
+        "equity": eng.equity + _paper_floating_pnl(),
+        "peak_equity": eng.peak_equity,
+        "trading_days": eng.trading_days,
+        "best_day_pnl": eng.best_day_pnl,
+        "total_pnl": sum(t.pnl for t in eng.trades),
+    }
+
+
+def _paper_floating_pnl() -> float:
+    """Floating PnL of open paper positions at the last seen price."""
+    total = 0.0
+    for p in eng_positions_safe():
+        direction = 1 if p["side"] == "LONG" else -1
+        total += (p["_mark"] - p["entry_price"]) * direction * p["volume"] * PAPER_ENGINE.contract_size
+    return total
+
+
+def eng_positions_safe() -> list[dict]:
+    rows = []
+    for p in PAPER_ENGINE.get_positions():
+        mark = PAPER_ENGINE._market_exit_price("LONG" if p["side"] == "LONG" else "SHORT")
+        row = dict(p)
+        row["_mark"] = mark if mark is not None else p["entry_price"]
+        rows.append(row)
+    return rows
+
+
+def check_prop_firm_breach() -> dict | None:
+    """Evaluate the paper engine against the selected prop firm. On a hard
+    breach the paper kill switch fires — the account is dead in the firm's
+    eyes, so the simulation must stop trading too."""
+    slug = PROP_FIRM_SELECTION.get("slug")
+    if not slug:
+        return None
+    from core.prop_firms import evaluate, get_firm
+    rules = get_firm(slug)
+    if rules is None:
+        return None
+    result = evaluate(rules, int(PROP_FIRM_SELECTION.get("phase_index", 0)), prop_firm_state())
+    if result["breaches"] and not PAPER_ENGINE.kill_switch_active:
+        PAPER_ENGINE.trigger_kill_switch()
+        logger.warning("prop-firm breach: %s -> kill switch engaged: %s",
+                       slug, [b["rule"] for b in result["breaches"]])
+    return result
 PAPER_TASK: dict = {"task": None, "last_processed": None}
 if DATA_MANAGER.has_execution() and DATA_MANAGER.active is not None:
     EXECUTION_ENGINE.set_broker(DATA_MANAGER.active)
@@ -346,6 +403,7 @@ async def _paper_feed_loop():
                         },
                     )
                 PAPER_TASK["last_processed"] = df.index[-1]
+                check_prop_firm_breach()
         except Exception as exc:
             logger.error("paper feed error: %s", exc)
         await asyncio.sleep(interval_seconds)

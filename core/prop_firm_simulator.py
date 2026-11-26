@@ -28,6 +28,8 @@ class PropFirmProfile:
     leverage: str = "1:100"
     news_trading_allowed: bool = True
     weekend_holding_allowed: bool = True
+    verified: bool = False          # True ONLY after checking the firm's site
+    confidence: str = "low"         # how sure the registry numbers are
 
     @property
     def target_amount(self) -> float:
@@ -42,53 +44,41 @@ class PropFirmProfile:
         return self.initial_balance * (self.max_total_loss_pct / 100.0)
 
 
-# Standard Institutional Prop Firm Challenge Profiles
-PROP_FIRM_PROFILES: Dict[str, PropFirmProfile] = {
-    "ftmo_100k": PropFirmProfile(
-        id="ftmo_100k",
-        name="FTMO 100K Challenge (Normal)",
-        initial_balance=100_000.0,
-        profit_target_pct=10.0,       # $10,000 target
-        max_daily_loss_pct=5.0,        # $5,000 max daily loss
-        max_total_loss_pct=10.0,       # $10,000 max total loss
-        min_trading_days=4,
-        max_trading_days=None,         # Unlimited time
-        leverage="1:100",
-    ),
-    "funding_pips_100k": PropFirmProfile(
-        id="funding_pips_100k",
-        name="Funding Pips 100K (2-Step Evaluation)",
-        initial_balance=100_000.0,
-        profit_target_pct=8.0,        # $8,000 target
-        max_daily_loss_pct=5.0,        # $5,000 max daily loss
-        max_total_loss_pct=10.0,       # $10,000 max total loss
-        min_trading_days=0,            # No minimum trading days
-        max_trading_days=None,
-        leverage="1:100",
-    ),
-    "mff_100k": PropFirmProfile(
-        id="mff_100k",
-        name="MyFundedFX / MFF 100K Challenge",
-        initial_balance=100_000.0,
-        profit_target_pct=8.0,        # $8,000 target
-        max_daily_loss_pct=5.0,        # $5,000 max daily loss
-        max_total_loss_pct=12.0,       # $12,000 max total loss (generous)
-        min_trading_days=5,
-        max_trading_days=None,
-        leverage="1:100",
-    ),
-    "alpha_capital_100k": PropFirmProfile(
-        id="alpha_capital_100k",
-        name="Alpha Capital 100K Evaluation",
-        initial_balance=100_000.0,
-        profit_target_pct=10.0,
-        max_daily_loss_pct=4.0,        # 4% tighter daily drawdown
-        max_total_loss_pct=8.0,        # 8% tighter total drawdown
-        min_trading_days=3,
-        max_trading_days=None,
-        leverage="1:100",
-    ),
-}
+# Challenge profiles are DERIVED from core/prop_firms.py — one source of
+# truth. The old hardcoded per-firm literals (with numbers nobody verified)
+# are gone; every profile carries the registry's verified/confidence flags.
+PROP_FIRM_PROFILES: Dict[str, PropFirmProfile] = {}
+
+
+def _profiles_from_registry() -> Dict[str, PropFirmProfile]:
+    from core.prop_firms import PROP_FIRMS
+
+    out: Dict[str, PropFirmProfile] = {}
+    for slug, rules in PROP_FIRMS.items():
+        for idx, ph in enumerate(rules.phases):
+            pid = f"{slug}_p{idx + 1}"
+            out[pid] = PropFirmProfile(
+                id=pid,
+                name=f"{rules.name} — {ph.name}",
+                initial_balance=100_000.0,
+                profit_target_pct=ph.profit_target_pct,
+                max_daily_loss_pct=ph.max_daily_loss_pct,
+                max_total_loss_pct=ph.max_total_loss_pct,
+                min_trading_days=ph.min_trading_days,
+                max_trading_days=ph.max_trading_days,
+                # "funded_only" still allows news during the evaluation
+                # phases the simulator models; only "all" blocks it outright.
+                news_trading_allowed=(rules.news_restriction != "all"),
+                weekend_holding_allowed=rules.weekend_holding,
+                verified=rules.verified,
+                confidence=rules.confidence,
+            )
+    # legacy id kept for compatibility (identical numbers to ftmo_p1)
+    out["ftmo_100k"] = out["ftmo_p1"]
+    return out
+
+
+PROP_FIRM_PROFILES.update(_profiles_from_registry())
 
 
 class PropFirmChallengeSimulator:
