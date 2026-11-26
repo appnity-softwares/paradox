@@ -176,6 +176,40 @@
               padding: 5px 14px; font-size: 12px; font-family: ui-monospace, Menlo, monospace;
               border-bottom: 1px solid #121924; }
   .tape-h { color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+  /* ── indicators menu (TradingView-style) ── */
+  .ind-wrap { position: relative; }
+  .ind-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+             border-radius: 7px; font-size: 12.5px; font-weight: 600;
+             background: var(--surface-2); border: 1px solid var(--border);
+             color: var(--text-dim); cursor: pointer; user-select: none; }
+  .ind-btn:hover, .ind-btn.open { color: var(--accent); border-color: rgba(212,168,67,.4); }
+  .ind-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+              width: 240px; background: var(--surface); border: 1px solid var(--border);
+              border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.5);
+              padding: 6px 0; display: none; }
+  .ind-menu.open { display: block; }
+  .ind-group { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase;
+               color: var(--text-faint); padding: 8px 14px 4px; }
+  .ind-item { display: flex; align-items: center; gap: 9px; padding: 7px 14px;
+              font-size: 12.5px; cursor: pointer; color: var(--text-dim); }
+  .ind-item:hover { background: var(--surface-2); color: var(--text); }
+  .ind-item .sw { width: 14px; height: 14px; border-radius: 4px;
+                  border: 1.5px solid var(--border); flex-shrink: 0;
+                  display: inline-flex; align-items: center; justify-content: center;
+                  font-size: 10px; color: #0a0e14; }
+  .ind-item.on .sw { background: var(--accent); border-color: var(--accent); }
+  .ind-item.on { color: var(--text); }
+  .ind-chips { position: absolute; top: 8px; left: 10px; z-index: 6; display: flex;
+               flex-wrap: wrap; gap: 5px; pointer-events: auto; }
+  .ind-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+              border-radius: 6px; font-size: 10.5px; font-weight: 600;
+              font-family: ui-monospace, Menlo, monospace;
+              background: rgba(20,27,37,.85); border: 1px solid var(--border);
+              color: var(--text-dim); }
+  .ind-chip .dot { margin: 0; width: 7px; height: 7px; }
+  .ind-chip .x { cursor: pointer; color: var(--text-faint); font-size: 11px; padding: 0 1px; }
+  .ind-chip .x:hover { color: var(--red); }
+  #chart-legend { top: 30px; }
   @media (max-width: 1100px) { .ws { grid-template-columns: 1fr; } }
   @media (max-width: 720px) { main { padding: 16px 12px 50px; } header { padding: 0 12px; } }
 
@@ -280,20 +314,14 @@
             <span class="tf" data-tf="4h">4h</span>
             <span class="tf" data-tf="1d">1D</span>
           </span>
-          <span class="tf-row" id="ind-toggles" style="gap:4px">
-            <span class="tf active" data-ind="ema20">EMA20</span>
-            <span class="tf active" data-ind="ema50">EMA50</span>
-            <span class="tf" data-ind="bb">BB</span>
-            <span class="tf active" data-ind="vol">VOL</span>
-            <span class="tf" data-ind="sma200">SMA200</span>
-            <span class="tf" data-ind="vwap">VWAP</span>
-            <span class="tf" data-ind="rsi">RSI</span>
-            <span class="tf" data-ind="macd">MACD</span>
-            <span class="tf" data-ind="stoch">STOCH</span>
-          </span>
+          <div class="ind-wrap" style="margin-left:auto">
+            <span class="ind-btn" id="ind-btn" onclick="toggleIndMenu(event)">ƒ Indicators <span id="ind-count" style="opacity:.7;font-size:10.5px"></span></span>
+            <div class="ind-menu" id="ind-menu"></div>
+          </div>
         </div>
         <div id="chart-wrap" style="position:relative;flex:1;min-height:0">
-          <div id="chart-legend" class="mono" style="position:absolute;top:8px;left:10px;z-index:5;font-size:12px;color:var(--text-dim);pointer-events:none"></div>
+          <div class="ind-chips" id="ind-chips"></div>
+          <div id="chart-legend" class="mono" style="position:absolute;top:30px;left:10px;z-index:5;font-size:12px;color:var(--text-dim);pointer-events:none"></div>
           <div id="chart-container" style="height:100%;min-height:300px"></div>
         </div>
         <div class="tf-row" style="padding:9px 12px;align-items:center;gap:8px;border-top:1px solid var(--border)">
@@ -883,11 +911,57 @@ document.querySelectorAll('#chart-tfs .tf').forEach(el => el.addEventListener('c
   chartTf = el.dataset.tf;
   loadMainChart();
 }));
-document.querySelectorAll('#ind-toggles .tf').forEach(el => el.addEventListener('click', () => {
-  el.classList.toggle('active');
-  IND[el.dataset.ind] = el.classList.contains('active');
+/* ── indicators menu (TradingView-style) ───────────────── */
+const INDICATORS = [
+  {key: 'ema20',  label: 'EMA 20',              group: 'Overlays',   color: '#d4a843'},
+  {key: 'ema50',  label: 'EMA 50',              group: 'Overlays',   color: '#4f8cff'},
+  {key: 'sma200', label: 'SMA 200',             group: 'Overlays',   color: '#9b6dd6'},
+  {key: 'bb',     label: 'Bollinger Bands',     group: 'Overlays',   color: '#5c6a7d'},
+  {key: 'vwap',   label: 'VWAP',                group: 'Overlays',   color: '#e0b34d'},
+  {key: 'vol',    label: 'Volume',              group: 'Overlays',   color: '#5c6a7d'},
+  {key: 'rsi',    label: 'RSI (14)',            group: 'Oscillators', color: '#c98f4f'},
+  {key: 'macd',   label: 'MACD (12, 26, 9)',    group: 'Oscillators', color: '#4f8cff'},
+  {key: 'stoch',  label: 'Stochastic (14, 3)',  group: 'Oscillators', color: '#4f8cff'},
+];
+function toggleIndMenu(ev) {
+  ev.stopPropagation();
+  $('ind-menu').classList.toggle('open');
+  $('ind-btn').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ind-wrap')) {
+    $('ind-menu')?.classList.remove('open');
+    $('ind-btn')?.classList.remove('open');
+  }
+});
+function renderIndMenu() {
+  const groups = [...new Set(INDICATORS.map(i => i.group))];
+  $('ind-menu').innerHTML = groups.map(g =>
+    `<div class="ind-group">${g}</div>` +
+    INDICATORS.filter(i => i.group === g).map(i =>
+      `<div class="ind-item ${IND[i.key] ? 'on' : ''}" onclick="toggleIndicator('${i.key}')">` +
+      `<span class="sw">${IND[i.key] ? '✓' : ''}</span>` +
+      `<span class="dot" style="background:${i.color}"></span>${i.label}</div>`
+    ).join('')
+  ).join('');
+  const n = INDICATORS.filter(i => IND[i.key]).length;
+  $('ind-count').textContent = n ? `(${n})` : '';
+}
+function toggleIndicator(key) {
+  IND[key] = !IND[key];
+  renderIndMenu();
+  renderIndChips();
   applyIndicators();
-}));
+}
+function renderIndChips() {
+  $('ind-chips').innerHTML = INDICATORS
+    .filter(i => IND[i.key])
+    .map(i => `<span class="ind-chip"><span class="dot" style="background:${i.color}"></span>` +
+      `${i.label}<span class="x" onclick="toggleIndicator('${i.key}')">✕</span></span>`)
+    .join('');
+}
+renderIndMenu();
+renderIndChips();
 
 function initChart() {
   if (chartReady || typeof LightweightCharts === 'undefined') return;
