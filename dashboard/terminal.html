@@ -209,6 +209,25 @@
   .ind-chip .dot { margin: 0; width: 7px; height: 7px; }
   .ind-chip .x { cursor: pointer; color: var(--text-faint); font-size: 11px; padding: 0 1px; }
   .ind-chip .x:hover { color: var(--red); }
+  .ind-settings { position: absolute; top: 8px; left: 10px; z-index: 40; width: 230px;
+                  background: var(--surface); border: 1px solid var(--border);
+                  border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.5); padding: 12px; }
+  .ind-settings h4 { margin: 0 0 10px; font-size: 12.5px; display: flex; align-items: center; gap: 7px; }
+  .ind-settings label { display: flex; justify-content: space-between; align-items: center;
+                        font-size: 11.5px; color: var(--text-dim); margin-bottom: 7px; }
+  .ind-settings input[type=number], .ind-settings select {
+    width: 84px; background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 5px; padding: 3px 7px; font-size: 12px;
+    font-family: ui-monospace, Menlo, monospace; }
+  .ind-settings input[type=color] { width: 34px; height: 22px; padding: 0; border: none;
+                                    background: none; cursor: pointer; }
+  .ind-settings .row-btns { display: flex; gap: 7px; margin-top: 10px; }
+  .ind-settings .row-btns button { flex: 1; padding: 5px 0; font-size: 11.5px; border-radius: 6px;
+                                   border: 1px solid var(--border); background: var(--surface-2);
+                                   color: var(--text-dim); cursor: pointer; }
+  .ind-settings .row-btns button.apply { background: var(--accent-soft); color: var(--accent);
+                                         border-color: rgba(212,168,67,.4); font-weight: 650; }
+  .ind-settings .row-btns button:hover { color: var(--text); }
   #chart-legend { top: 30px; }
   @media (max-width: 1100px) { .ws { grid-template-columns: 1fr; } }
   @media (max-width: 720px) { main { padding: 16px 12px 50px; } header { padding: 0 12px; } }
@@ -321,6 +340,7 @@
         </div>
         <div id="chart-wrap" style="position:relative;flex:1;min-height:0">
           <div class="ind-chips" id="ind-chips"></div>
+          <div id="ind-settings"></div>
           <div id="chart-legend" class="mono" style="position:absolute;top:30px;left:10px;z-index:5;font-size:12px;color:var(--text-dim);pointer-events:none"></div>
           <div id="chart-container" style="height:100%;min-height:300px"></div>
         </div>
@@ -901,28 +921,106 @@ async function closeAll() {
 let chartTf = '15m';
 let chartType = 'candles';
 let logScale = false;
-const IND = {ema20: true, ema50: true, bb: false, vol: true, sma200: false, vwap: false, rsi: false, macd: false, stoch: false};
-let TV = null, candleSeries = null, volSeries = null, indSeries = {}, mainSeries = null;
-let chartReady = false, chartData = [];
+/* ── indicator instances (TradingView-style) ─────────────
+   Every indicator is an instance with its own params + colour.
+   The same type can be added multiple times (e.g. EMA 20 + EMA 50). */
+const IND_CATALOG = {
+  ma:    {label: 'Moving Average', group: 'Overlays',
+          schema: [{k: 'kind', type: 'select', opts: ['EMA', 'SMA'], dflt: 'EMA'},
+                   {k: 'length', type: 'number', dflt: 20, min: 2, max: 500}]},
+  bb:    {label: 'Bollinger Bands', group: 'Overlays',
+          schema: [{k: 'length', type: 'number', dflt: 20, min: 2, max: 400},
+                   {k: 'mult', type: 'number', dflt: 2, min: 0.5, max: 6, step: 0.5}]},
+  vwap:  {label: 'VWAP', group: 'Overlays', schema: []},
+  vol:   {label: 'Volume', group: 'Overlays', schema: []},
+  rsi:   {label: 'RSI', group: 'Oscillators',
+          schema: [{k: 'length', type: 'number', dflt: 14, min: 2, max: 100}]},
+  macd:  {label: 'MACD', group: 'Oscillators',
+          schema: [{k: 'fast', type: 'number', dflt: 12, min: 2, max: 100},
+                   {k: 'slow', type: 'number', dflt: 26, min: 3, max: 200},
+                   {k: 'signal', type: 'number', dflt: 9, min: 2, max: 100}]},
+  stoch: {label: 'Stochastic', group: 'Oscillators',
+          schema: [{k: 'k', type: 'number', dflt: 14, min: 2, max: 100},
+                   {k: 'd', type: 'number', dflt: 3, min: 1, max: 50}]},
+};
+const IND_PALETTE = ['#d4a843', '#4f8cff', '#9b6dd6', '#34c07c', '#e5544f', '#e0b34d', '#4dd0c4', '#c98f4f'];
+let IND_INSTANCES = [];
+let indSeq = 0;
+let dynSeries = [];        // lightweight-charts series owned by instances
 
-document.querySelectorAll('#chart-tfs .tf').forEach(el => el.addEventListener('click', () => {
-  document.querySelectorAll('#chart-tfs .tf').forEach(x => x.classList.remove('active'));
-  el.classList.add('active');
-  chartTf = el.dataset.tf;
-  loadMainChart();
-}));
-/* ── indicators menu (TradingView-style) ───────────────── */
-const INDICATORS = [
-  {key: 'ema20',  label: 'EMA 20',              group: 'Overlays',   color: '#d4a843'},
-  {key: 'ema50',  label: 'EMA 50',              group: 'Overlays',   color: '#4f8cff'},
-  {key: 'sma200', label: 'SMA 200',             group: 'Overlays',   color: '#9b6dd6'},
-  {key: 'bb',     label: 'Bollinger Bands',     group: 'Overlays',   color: '#5c6a7d'},
-  {key: 'vwap',   label: 'VWAP',                group: 'Overlays',   color: '#e0b34d'},
-  {key: 'vol',    label: 'Volume',              group: 'Overlays',   color: '#5c6a7d'},
-  {key: 'rsi',    label: 'RSI (14)',            group: 'Oscillators', color: '#c98f4f'},
-  {key: 'macd',   label: 'MACD (12, 26, 9)',    group: 'Oscillators', color: '#4f8cff'},
-  {key: 'stoch',  label: 'Stochastic (14, 3)',  group: 'Oscillators', color: '#4f8cff'},
-];
+function instLabel(inst) {
+  const p = inst.params;
+  switch (inst.type) {
+    case 'ma':    return `${p.kind} ${p.length}`;
+    case 'bb':    return `BB ${p.length},${p.mult}`;
+    case 'rsi':   return `RSI ${p.length}`;
+    case 'macd':  return `MACD ${p.fast},${p.slow},${p.signal}`;
+    case 'stoch': return `Stoch ${p.k},${p.d}`;
+    default:      return IND_CATALOG[inst.type].label;
+  }
+}
+function nextColor() {
+  return IND_PALETTE[indSeq % IND_PALETTE.length];
+}
+function addIndicator(type) {
+  const def = IND_CATALOG[type];
+  if (!def) return;
+  const params = {};
+  // smart defaults: second MA defaults to 50, third to 200
+  for (const f of def.schema) {
+    params[f.k] = f.dflt;
+    if (type === 'ma' && f.k === 'length') {
+      const used = IND_INSTANCES.filter(i => i.type === 'ma').map(i => i.params.length);
+      const pref = [20, 50, 200, 100, 9].find(n => !used.includes(n));
+      params.length = pref ?? f.dflt;
+    }
+  }
+  IND_INSTANCES.push({id: ++indSeq, type, params, color: nextColor()});
+  renderIndMenu(); renderIndChips(); applyIndicators();
+}
+function removeIndicator(id) {
+  IND_INSTANCES = IND_INSTANCES.filter(i => i.id !== id);
+  closeIndSettings();
+  renderIndMenu(); renderIndChips(); applyIndicators();
+}
+function openIndSettings(id) {
+  const inst = IND_INSTANCES.find(i => i.id === id);
+  if (!inst) return;
+  const def = IND_CATALOG[inst.type];
+  $('ind-settings').innerHTML =
+    `<div class="ind-settings" onclick="event.stopPropagation()">` +
+    `<h4><span class="dot" style="background:${inst.color}"></span>${def.label}</h4>` +
+    def.schema.map(f => {
+      if (f.type === 'select')
+        return `<label>${f.k}<select id="is-${f.k}">` +
+          f.opts.map(o => `<option ${inst.params[f.k] === o ? 'selected' : ''}>${o}</option>`).join('') +
+          `</select></label>`;
+      return `<label>${f.k}<input type="number" id="is-${f.k}" value="${inst.params[f.k]}"` +
+        ` min="${f.min ?? 0}" max="${f.max ?? 9999}" step="${f.step ?? 1}"></label>`;
+    }).join('') +
+    `<label>colour<input type="color" id="is-color" value="${inst.color}"></label>` +
+    `<div class="row-btns"><button onclick="closeIndSettings()">Cancel</button>` +
+    `<button class="apply" onclick="applyIndSettings(${inst.id})">Apply</button></div></div>`;
+}
+function closeIndSettings() { $('ind-settings').innerHTML = ''; }
+function applyIndSettings(id) {
+  const inst = IND_INSTANCES.find(i => i.id === id);
+  if (!inst) return;
+  const def = IND_CATALOG[inst.type];
+  for (const f of def.schema) {
+    const el = document.getElementById('is-' + f.k);
+    if (!el) continue;
+    let v = f.type === 'select' ? el.value : parseFloat(el.value);
+    if (f.type === 'number' && (isNaN(v) || v < (f.min ?? -1e9) || v > (f.max ?? 1e9))) continue;
+    inst.params[f.k] = v;
+  }
+  const c = document.getElementById('is-color');
+  if (c) inst.color = c.value;
+  closeIndSettings();
+  renderIndMenu(); renderIndChips(); applyIndicators();
+}
+
+const INDICATORS = Object.entries(IND_CATALOG).map(([key, d]) => ({key, label: d.label, group: d.group}));
 function toggleIndMenu(ev) {
   ev.stopPropagation();
   $('ind-menu').classList.toggle('open');
@@ -933,35 +1031,45 @@ document.addEventListener('click', e => {
     $('ind-menu')?.classList.remove('open');
     $('ind-btn')?.classList.remove('open');
   }
+  if (!e.target.closest('.ind-settings') && !e.target.closest('.ind-chip')) closeIndSettings();
 });
 function renderIndMenu() {
   const groups = [...new Set(INDICATORS.map(i => i.group))];
   $('ind-menu').innerHTML = groups.map(g =>
     `<div class="ind-group">${g}</div>` +
     INDICATORS.filter(i => i.group === g).map(i =>
-      `<div class="ind-item ${IND[i.key] ? 'on' : ''}" onclick="toggleIndicator('${i.key}')">` +
-      `<span class="sw">${IND[i.key] ? '✓' : ''}</span>` +
-      `<span class="dot" style="background:${i.color}"></span>${i.label}</div>`
+      `<div class="ind-item" onclick="addIndicator('${i.key}'); event.stopPropagation();">` +
+      `<span class="sw">+</span>` +
+      `<span class="dot" style="background:var(--accent)"></span>${i.label}</div>`
     ).join('')
   ).join('');
-  const n = INDICATORS.filter(i => IND[i.key]).length;
+  const n = IND_INSTANCES.length;
   $('ind-count').textContent = n ? `(${n})` : '';
 }
-function toggleIndicator(key) {
-  IND[key] = !IND[key];
-  renderIndMenu();
-  renderIndChips();
-  applyIndicators();
-}
 function renderIndChips() {
-  $('ind-chips').innerHTML = INDICATORS
-    .filter(i => IND[i.key])
-    .map(i => `<span class="ind-chip"><span class="dot" style="background:${i.color}"></span>` +
-      `${i.label}<span class="x" onclick="toggleIndicator('${i.key}')">✕</span></span>`)
+  $('ind-chips').innerHTML = IND_INSTANCES
+    .map(i => `<span class="ind-chip" style="border-color:${i.color}55">` +
+      `<span class="dot" style="background:${i.color}"></span>${instLabel(i)}` +
+      `<span class="x" title="Settings" onclick="openIndSettings(${i.id}); event.stopPropagation();">⚙</span>` +
+      `<span class="x" title="Remove" onclick="removeIndicator(${i.id}); event.stopPropagation();">✕</span></span>`)
     .join('');
 }
+IND_INSTANCES = [
+  {id: ++indSeq, type: 'ma', params: {kind: 'EMA', length: 20}, color: '#d4a843'},
+  {id: ++indSeq, type: 'ma', params: {kind: 'EMA', length: 50}, color: '#4f8cff'},
+  {id: ++indSeq, type: 'vol', params: {}, color: '#5c6a7d'},
+];
 renderIndMenu();
 renderIndChips();
+let TV = null, candleSeries = null, volSeries = null, indSeries = {}, mainSeries = null;
+let chartReady = false, chartData = [];
+
+document.querySelectorAll('#chart-tfs .tf').forEach(el => el.addEventListener('click', () => {
+  document.querySelectorAll('#chart-tfs .tf').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+  chartTf = el.dataset.tf;
+  loadMainChart();
+}));
 
 function initChart() {
   if (chartReady || typeof LightweightCharts === 'undefined') return;
@@ -987,40 +1095,6 @@ function initChart() {
   volSeries = TV.addHistogramSeries({priceFormat: {type: 'volume'},
     priceScaleId: 'vol', lastValueVisible: false, priceLineVisible: false});
   TV.priceScale('vol').applyOptions({scaleMargins: {top: 0.82, bottom: 0}});
-  indSeries.vwap = TV.addLineSeries({color: '#e0b34d', lineWidth: 1.2,
-    lineStyle: LightweightCharts.LineStyle.Dashed,
-    lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
-  indSeries.rsi = TV.addLineSeries({color: '#c98f4f', lineWidth: 1.2,
-    priceScaleId: 'rsi', lastValueVisible: false, priceLineVisible: false,
-    crosshairMarkerVisible: false});
-  indSeries.rsi.createPriceLine({price: 70, color: 'rgba(229,84,79,.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
-  indSeries.rsi.createPriceLine({price: 30, color: 'rgba(52,192,124,.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
-  TV.priceScale('rsi').applyOptions({scaleMargins: {top: 0.78, bottom: 0.02}});
-  indSeries.macdH = TV.addHistogramSeries({priceScaleId: 'macd',
-    lastValueVisible: false, priceLineVisible: false});
-  indSeries.macdL = TV.addLineSeries({color: '#4f8cff', lineWidth: 1,
-    priceScaleId: 'macd', lastValueVisible: false, priceLineVisible: false,
-    crosshairMarkerVisible: false});
-  indSeries.macdS = TV.addLineSeries({color: '#e0b34d', lineWidth: 1,
-    priceScaleId: 'macd', lastValueVisible: false, priceLineVisible: false,
-    crosshairMarkerVisible: false});
-  TV.priceScale('macd').applyOptions({scaleMargins: {top: 0.62, bottom: 0.2}});
-  indSeries.stochK = TV.addLineSeries({color: '#4f8cff', lineWidth: 1,
-    priceScaleId: 'stoch', lastValueVisible: false, priceLineVisible: false,
-    crosshairMarkerVisible: false});
-  indSeries.stochD = TV.addLineSeries({color: '#e0b34d', lineWidth: 1,
-    priceScaleId: 'stoch', lastValueVisible: false, priceLineVisible: false,
-    crosshairMarkerVisible: false});
-  indSeries.stochD.createPriceLine({price: 80, color: 'rgba(229,84,79,.35)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
-  indSeries.stochD.createPriceLine({price: 20, color: 'rgba(52,192,124,.35)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
-  TV.priceScale('stoch').applyOptions({scaleMargins: {top: 0.62, bottom: 0.02}});
-  for (const [key, color, width] of [
-      ['ema20', '#d4a843', 1.4], ['ema50', '#4f8cff', 1.4],
-      ['sma200', '#9b6dd6', 1.2],
-      ['bbU', '#5c6a7d', 1], ['bbL', '#5c6a7d', 1]]) {
-    indSeries[key] = TV.addLineSeries({color, lineWidth: width, lastValueVisible: false,
-      priceLineVisible: false, crosshairMarkerVisible: false});
-  }
   TV.subscribeCrosshairMove(param => {
     const leg = document.getElementById('chart-legend');
     if (!param || !param.time || !param.seriesData) { leg.innerHTML = ''; return; }
@@ -1058,74 +1132,109 @@ function applyIndicators() {
   const closes = chartData.map(b => b.close);
   const stamp = (arr) => chartData.map((b, i) => arr[i] == null ? null : {time: b.time, value: arr[i]})
     .filter(Boolean);
-  indSeries.ema20.setData(IND.ema20 ? stamp(ema(closes, 20)) : []);
-  indSeries.ema50.setData(IND.ema50 ? stamp(ema(closes, 50)) : []);
-  indSeries.sma200.setData(IND.sma200 ? stamp(sma(closes, 200)) : []);
-  if (IND.bb) {
-    const mid = sma(closes, 20);
-    const dev = closes.map((_, i) => {
-      if (i < 19) return null;
-      const m = mid[i];
-      const slice = closes.slice(i - 19, i + 1);
-      return Math.sqrt(slice.reduce((s, v) => s + (v - m) ** 2, 0) / 20);
-    });
-    indSeries.bbU.setData(stamp(mid.map((m, i) => m == null ? null : m + 2 * dev[i])));
-    indSeries.bbL.setData(stamp(mid.map((m, i) => m == null ? null : m - 2 * dev[i])));
-  } else {
-    indSeries.bbU.setData([]); indSeries.bbL.setData([]);
-  }
-  if (IND.vwap) {
-    let cumPV = 0, cumV = 0;
-    const vw = chartData.map(b => {
-      cumPV += (b.high + b.low + b.close) / 3 * (b.volume || 1);
-      cumV += (b.volume || 1);
-      return {time: b.time, value: cumPV / cumV};
-    });
-    indSeries.vwap.setData(vw);
-  } else indSeries.vwap.setData([]);
-  if (IND.rsi) {
-    const out = [];
-    let g = 0, l = 0;
-    for (let i = 1; i < closes.length; i++) {
-      const d = closes[i] - closes[i - 1];
-      if (i <= 14) { g += Math.max(d, 0) / 14; l += Math.max(-d, 0) / 14; }
-      else {
-        g = (g * 13 + Math.max(d, 0)) / 14;
-        l = (l * 13 + Math.max(-d, 0)) / 14;
+  // rebuild every instance's series from scratch — simple and reliable
+  for (const s of dynSeries) { try { TV.removeSeries(s); } catch (e) {} }
+  dynSeries = [];
+  let oscSlot = 0;   // stack multiple oscillators without overlap
+  const oscMargins = [{top: 0.78, bottom: 0.02}, {top: 0.86, bottom: 0.02}, {top: 0.92, bottom: 0.02}];
+  for (const inst of IND_INSTANCES) {
+    const p = inst.params, c = inst.color;
+    if (inst.type === 'ma') {
+      const vals = p.kind === 'SMA' ? sma(closes, p.length) : ema(closes, p.length);
+      const s = TV.addLineSeries({color: c, lineWidth: 1.4, lastValueVisible: false,
+        priceLineVisible: false, crosshairMarkerVisible: false});
+      s.setData(stamp(vals)); dynSeries.push(s);
+    } else if (inst.type === 'bb') {
+      const mid = sma(closes, p.length);
+      const dev = closes.map((_, i) => {
+        if (i < p.length - 1) return null;
+        const m = mid[i];
+        const slice = closes.slice(i - (p.length - 1), i + 1);
+        return Math.sqrt(slice.reduce((s, v) => s + (v - m) ** 2, 0) / p.length);
+      });
+      for (const [vals, width, style] of [
+          [mid.map((m, i) => m == null ? null : m + p.mult * dev[i]), 1, null],
+          [mid, 1, LightweightCharts.LineStyle.Dashed],
+          [mid.map((m, i) => m == null ? null : m - p.mult * dev[i]), 1, null]]) {
+        const s = TV.addLineSeries({color: c, lineWidth: width,
+          lineStyle: style ?? LightweightCharts.LineStyle.Solid,
+          lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+        s.setData(stamp(vals)); dynSeries.push(s);
       }
-      if (i >= 14) out.push({time: chartData[i].time, value: l === 0 ? 100 : 100 - 100 / (1 + g / l)});
+    } else if (inst.type === 'vwap') {
+      let cumPV = 0, cumV = 0;
+      const vw = chartData.map(b => {
+        cumPV += (b.high + b.low + b.close) / 3 * (b.volume || 1);
+        cumV += (b.volume || 1);
+        return {time: b.time, value: cumPV / cumV};
+      });
+      const s = TV.addLineSeries({color: c, lineWidth: 1.2,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+      s.setData(vw); dynSeries.push(s);
+    } else if (inst.type === 'vol') {
+      volSeries.applyOptions({visible: true, color: c});
+    } else if (inst.type === 'rsi') {
+      const out = [];
+      let g = 0, l = 0;
+      const n = p.length;
+      for (let i = 1; i < closes.length; i++) {
+        const d = closes[i] - closes[i - 1];
+        if (i <= n) { g += Math.max(d, 0) / n; l += Math.max(-d, 0) / n; }
+        else {
+          g = (g * (n - 1) + Math.max(d, 0)) / n;
+          l = (l * (n - 1) + Math.max(-d, 0)) / n;
+        }
+        if (i >= n) out.push({time: chartData[i].time, value: l === 0 ? 100 : 100 - 100 / (1 + g / l)});
+      }
+      const m = oscMargins[Math.min(oscSlot++, oscMargins.length - 1)];
+      const s = TV.addLineSeries({color: c, lineWidth: 1.2, priceScaleId: 'osc',
+        lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+      s.createPriceLine({price: 70, color: 'rgba(229,84,79,.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
+      s.createPriceLine({price: 30, color: 'rgba(52,192,124,.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
+      s.setData(out); dynSeries.push(s);
+      TV.priceScale('osc').applyOptions({scaleMargins: m});
+    } else if (inst.type === 'macd') {
+      const f = ema(closes, p.fast), sl = ema(closes, p.slow);
+      const macdLine = f.map((v, i) => v == null || sl[i] == null ? null : v - sl[i]);
+      const sigLine = ema(macdLine.map(v => v ?? 0), p.signal).map((v, i) => macdLine[i] == null ? null : v);
+      const m = oscMargins[Math.min(oscSlot++, oscMargins.length - 1)];
+      const h = TV.addHistogramSeries({priceScaleId: 'osc', lastValueVisible: false, priceLineVisible: false});
+      const l1 = TV.addLineSeries({color: c, lineWidth: 1, priceScaleId: 'osc',
+        lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+      const l2 = TV.addLineSeries({color: '#e0b34d', lineWidth: 1, priceScaleId: 'osc',
+        lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+      h.setData(stamp(macdLine.map((v, i) => v == null ? null : v - (sigLine[i] ?? 0))));
+      l1.setData(stamp(macdLine)); l2.setData(stamp(sigLine));
+      dynSeries.push(h, l1, l2);
+      TV.priceScale('osc').applyOptions({scaleMargins: m});
+    } else if (inst.type === 'stoch') {
+      const highs = chartData.map(b => b.high), lows = chartData.map(b => b.low);
+      const k = [], d = [];
+      for (let i = 0; i < closes.length; i++) {
+        if (i < p.k) { k.push(null); d.push(null); continue; }
+        const hh = Math.max(...highs.slice(i - p.k + 1, i + 1));
+        const ll = Math.min(...lows.slice(i - p.k + 1, i + 1));
+        k.push(ll === hh ? 50 : (closes[i] - ll) / (hh - ll) * 100);
+      }
+      for (let i = 0; i < k.length; i++) {
+        let ok = i >= p.d - 1;
+        for (let j = 0; j < p.d; j++) if (k[i - j] == null) ok = false;
+        d.push(ok ? k.slice(i - p.d + 1, i + 1).reduce((s, v) => s + v, 0) / p.d : null);
+      }
+      const m = oscMargins[Math.min(oscSlot++, oscMargins.length - 1)];
+      const s1 = TV.addLineSeries({color: c, lineWidth: 1, priceScaleId: 'osc',
+        lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+      const s2 = TV.addLineSeries({color: '#e0b34d', lineWidth: 1, priceScaleId: 'osc',
+        lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+      s1.createPriceLine({price: 80, color: 'rgba(229,84,79,.35)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
+      s1.createPriceLine({price: 20, color: 'rgba(52,192,124,.35)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false});
+      s1.setData(stamp(k)); s2.setData(stamp(d));
+      dynSeries.push(s1, s2);
+      TV.priceScale('osc').applyOptions({scaleMargins: m});
     }
-    indSeries.rsi.setData(out);
-  } else indSeries.rsi.setData([]);
-  if (IND.macd) {
-    const f = ema(closes, 12), s = ema(closes, 26);
-    const macdLine = f.map((v, i) => v == null || s[i] == null ? null : v - s[i]);
-    const sigLine = ema(macdLine.map(v => v ?? 0), 9).map((v, i) => macdLine[i] == null ? null : v);
-    indSeries.macdH.setData(stamp(macdLine.map((v, i) => v == null ? null : v - (sigLine[i] ?? 0))));
-    indSeries.macdL.setData(stamp(macdLine));
-    indSeries.macdS.setData(stamp(sigLine));
-  } else {
-    indSeries.macdH.setData([]); indSeries.macdL.setData([]); indSeries.macdS.setData([]);
   }
-  if (IND.stoch) {
-    const highs = chartData.map(b => b.high), lows = chartData.map(b => b.low);
-    const k = [], d = [];
-    for (let i = 0; i < closes.length; i++) {
-      if (i < 14) { k.push(null); d.push(null); continue; }
-      const hh = Math.max(...highs.slice(i - 13, i + 1));
-      const ll = Math.min(...lows.slice(i - 13, i + 1));
-      k.push(ll === hh ? 50 : (closes[i] - ll) / (hh - ll) * 100);
-    }
-    for (let i = 0; i < k.length; i++) {
-      if (i < 16 || k[i] == null || k[i - 1] == null || k[i - 2] == null) { d.push(null); continue; }
-      d.push((k[i] + k[i - 1] + k[i - 2]) / 3);
-    }
-    indSeries.stochK.setData(stamp(k));
-    indSeries.stochD.setData(stamp(d));
-  } else {
-    indSeries.stochK.setData([]); indSeries.stochD.setData([]);
-  }
-  volSeries.applyOptions({visible: IND.vol});
+  if (!IND_INSTANCES.some(i => i.type === 'vol')) volSeries.applyOptions({visible: false});
 }
 
 /* ── chart type / scale ────────────────────────────────── */
