@@ -15,6 +15,7 @@ from dashboard.state import (
     MARKET_RAG_ENGINE,
     MessageType,
     ORCHESTRATOR,
+    PAPER_ENGINE,
     PORTFOLIO_RISK_AGENT,
     RESEARCH_AGENT,
     SingleAgentExecReq,
@@ -206,36 +207,55 @@ async def ai_chat(req: AIChatReq):
     rag_info = MARKET_RAG_ENGINE.get_market_pattern_rag_context(last_p)
 
     if any(k in msg_lower for k in ["rag", "vertex", "vector", "pattern", "similar", "match", "retrieval"]):
-        top_match = rag_info["matches"][0] if rag_info.get("matches") else {}
-        reply = (
-            f"### 🧠 Market RAG Vector Retrieval Intelligence\n\n"
-            f"- **Vector Index:** 2,398 quantized 32-D microstructural embeddings in memory.\n"
-            f"- **Top Historical Match:** `{top_match.get('timestamp', '2026-11-12 12:28 UTC')}` with **{top_match.get('similarity_pct', 100.0)}% Cosine Similarity**.\n"
-            f"- **Historical Outcome:** {rag_info.get('win_rate_pct', 60.0)}% Bullish expansion with average drift of `{rag_info.get('avg_forward_return_bps', 0.2)} bps`.\n"
-            f"- **Storage Efficiency:** 60,000 sub-second ticks compressed to 1.4 MB in Parquet (Snappy), 100% tick-by-tick precision."
-        )
+        matches = rag_info.get("matches") or []
+        if matches:
+            top_match = matches[0]
+            reply = (
+                f"### 🧠 Market RAG Pattern Retrieval\n\n"
+                f"- **Top Historical Match:** `{top_match.get('timestamp', 'n/a')}` with **{top_match.get('similarity_pct', 0)}% similarity**.\n"
+                f"- **Historical Outcome:** {rag_info.get('win_rate_pct', 'n/a')}% bullish expansion, avg forward drift `{rag_info.get('avg_forward_return_bps', 'n/a')} bps`.\n"
+                f"- Source: the live pattern store built from recorded market data."
+            )
+        else:
+            reply = (
+                "### 🧠 Market RAG Pattern Retrieval\n\n"
+                "- **No similar patterns on record.** The pattern store has no "
+                "measured history for the current market state (no tick "
+                "recorder has run yet), so there is nothing to retrieve — "
+                "any similarity number here would be invented."
+            )
     elif any(k in msg_lower for k in ["analyze", "audit", "performance", "result", "sharpe", "win rate"]):
-        wr = metrics.get("Win Rate %", "64.2%")
-        pf = metrics.get("Profit Factor", "2.18")
-        dd = metrics.get("Max Drawdown %", "4.1%")
-        ret = metrics.get("Total Return %", "+18.4%")
-        reply = (
-            f"### 📊 Institutional Audit: `{strat}` ({tf})\n\n"
-            f"- **Net Expectancy:** {ret} Return with a **{wr} Win Rate**.\n"
-            f"- **Profit Factor:** `{pf}` (Threshold > 1.75 indicates robust alpha edge).\n"
-            f"- **Drawdown Safety:** Max Drawdown is `{dd}`, well below the institutional 5.0% prop-firm threshold.\n\n"
-            f"**💡 Quant Recommendation:**\n"
-            f"1. Consider tightening ATR stop multiplier from 1.5 to 1.3 during low-volatility Asian hours.\n"
-            f"2. Add a VWAP trend filter to eliminate false chop entries during the London/NY transition (13:00-14:00 UTC)."
-        )
+        paper = PAPER_ENGINE.get_status()
+        realized = paper.get("realized_pnl")
+        trades = paper.get("trades", 0)
+        if trades:
+            reply = (
+                f"### 📊 Measured Paper Performance ({strat} context, {tf})\n\n"
+                f"- **Realized PnL (paper):** ${realized:,.2f} over **{trades} closed trades**.\n"
+                f"- **Open positions:** {paper.get('positions', 0)}. Kill switch: "
+                f"{'ENGAGED' if paper.get('kill_switch_active') else 'armed'}.\n\n"
+                "**Note:** these are PAPER fills with modeled spread/slippage — "
+                "not live results. Win rate / PF / Sharpe per strategy require "
+                "a trade ledger, which does not exist yet."
+            )
+        else:
+            reply = (
+                "### 📊 Performance: NOT MEASURED\n\n"
+                "- There is **no trade ledger yet** — no closed paper or live "
+                "trades are on record, so win rate, profit factor, Sharpe and "
+                "drawdown cannot be reported without inventing them.\n"
+                "- The numbers this chat used to show here (64.2% WR, PF 2.18, "
+                "+18.4%) were hardcoded fiction and have been removed.\n\n"
+                "**To get real numbers:** run the paper engine or a backtest "
+                "with real spread/swap costs, then ask again."
+            )
     elif any(k in msg_lower for k in ["regime", "market", "volatility", "gold", "xau", "trend"]):
         reply = (
             f"### 🌐 Gold (XAUUSD) Market Microstructure Analysis\n\n"
             f"- **Current Spot Anchor:** `${last_p:.2f}`\n"
-            f"- **Market Regime:** **London / NY Overlap Expansion** (High Momentum, Tight Spreads ~0.25 - 0.35 pts).\n"
-            f"- **Key Structural Levels:** Support at `${last_p - 18.5:.2f}`, Resistance at `${last_p + 24.0:.2f}`.\n"
-            f"- **Session Advice:** XAUUSD directional velocity peaks between **13:30 - 16:30 UTC** (US Economic Releases & Comex Open). "
-            f"Avoid aggressive breakout buys when ATR(14) expands beyond 3.5 pts without consolidation."
+            f"- **Market Regime:** computed live from data (see the regime card) — not a fixed label.\n"
+            f"- **Session Note:** XAUUSD movement typically peaks around the **13:30 - 16:30 UTC** window (US data & Comex open). "
+            f"Specific support/resistance levels are NOT provided here — the levels previously quoted in this reply were invented, not computed."
         )
     elif any(k in msg_lower for k in ["optimize", "parameters", "sl", "tp", "risk", "stop loss"]):
         reply = (
@@ -247,9 +267,9 @@ async def ai_chat(req: AIChatReq):
     elif any(k in msg_lower for k in ["mt5", "mac", "download", "real data", "data"]):
         reply = (
             f"### 🔌 Real MT5 Mac Integration Guide\n\n"
-            f"- **Detected MT5 Path:** `~/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/Program Files/MetaTrader 5`\n"
-            f"- **Real Ticks On Disk:** Over **55 MB** of tick files (`202610.tkc`, `202611.tkc`) detected!\n"
-            f"- **One-Click Export:** We placed `Export_XAUUSD.mq5` into your MT5 `MQL5/Scripts` folder.\n"
+            f"- **MT5 Path (typical):** `~/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/Program Files/MetaTrader 5` — verify in the MT5 tab, which scans the real path.\n"
+            f"- **Tick files on disk:** check the MT5 tab for the actual scan result — this chat does not detect them itself.\n"
+            f"- **Export script:** run the `Export_XAUUSD` script inside MT5 (`MQL5/Scripts`), then click **'Sync from MT5'** in the MT5 tab.\n"
             f"  1. In MT5, double-click `Export_XAUUSD` under Scripts.\n"
             f"  2. Click **'Sync from MT5'** in the MT5 tab on the dashboard to immediately inject it into the backtester!"
         )
@@ -269,364 +289,181 @@ async def ai_chat(req: AIChatReq):
 
 @router.get("/api/agents/audit")
 def agents_audit_endpoint():
-    """Institutional Client Due Diligence & Audit Scorecard across 8 AI Agents."""
+    """Agent audit scorecard — HONEST version.
+
+    The previous version of this endpoint returned a hardcoded 94.2
+    "INSTITUTIONAL GRADE" scorecard: fixed scores per agent, invented
+    walk-forward efficiency (86.2%), Monte Carlo pass rates (97.4%), Sharpe
+    (1.86) and profit factor (1.74) that no code ever computed. None of it
+    was measured. This version reports ONLY what is actually measured:
+
+    - live market context (regime/session/price/spread) when data exists
+    - live account and position state from the paper engine
+    - portfolio risk from the risk agent on the real positions
+    - every capability score is NOT EVALUATED until a real audit harness
+      measures it — there is no such harness yet, so nothing is scored
+    """
     from datetime import datetime, timezone
 
-    # Pull live context from real agents & execution engine
     regime_data = RESEARCH_AGENT._detect_regime("XAUUSD", "15m", 30)
     session_data = MARKET_INTELLIGENCE_AGENT._analyze_session("XAUUSD")
     mkt_ctx = MARKET_INTELLIGENCE_AGENT._get_market_context("XAUUSD")
-    acct = EXECUTION_ENGINE.get_account_summary()
-    positions = EXECUTION_ENGINE.get_positions()
+    acct = PAPER_ENGINE.get_status()
+    positions = PAPER_ENGINE.get_positions()
     risk_assessment = PORTFOLIO_RISK_AGENT._assess_portfolio_risk({
         "positions": positions,
         "account_equity": acct["equity"],
     })
 
-    cur_price = mkt_ctx.get("price", 3557.76)
-    spread = mkt_ctx.get("spread_points", 0.30)
-    atr_val = regime_data.get("metrics", {}).get("atr", 6.8)
-    rsi_val = regime_data.get("metrics", {}).get("rsi", 45.0)
+    cur_price = mkt_ctx.get("price")
+    spread = mkt_ctx.get("spread_points")
+    atr_val = regime_data.get("metrics", {}).get("atr")
+    rsi_val = regime_data.get("metrics", {}).get("rsi")
+    regime = regime_data.get("regime")
+    regime_measured = regime_data.get("measured", regime not in (None, "unavailable"))
+
+    def _na(v, fmt=None):
+        if v is None:
+            return "NOT MEASURED"
+        return fmt(v) if fmt else v
 
     scorecard = {
-        "overall_score": 94.2,
-        "grade": "INSTITUTIONAL GRADE (PASS)",
-        "status": "APPROVED_FOR_ALLOCATION",
+        "overall_score": None,
+        "grade": "NOT EVALUATED",
+        "status": "AWAITING_REAL_AUDIT",
+        "note": ("No quantitative audit harness exists in this codebase. The "
+                 "scores previously shown here (94.2 'INSTITUTIONAL GRADE', "
+                 "per-agent 89-98) were hardcoded and never measured. This "
+                 "scorecard reports only live, measured state until a real "
+                 "audit harness is built."),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "account_equity": acct["equity"],
         "max_prop_firm_drawdown_limit_pct": 5.0,
-        "current_drawdown_pct": 0.0 if not positions else 0.8,
+        "current_drawdown_pct": 0.0 if not positions else None,
         "agents": [
             {
                 "id": "compliance_agent",
                 "name": "Prop-Firm & Regulatory Compliance Agent",
-                "score": 98.5,
-                "status": "PASSED",
-                "role": "Enforces strict prop-firm drawdown rules (5% daily, 10% max total loss, leverage caps).",
+                "score": None,
+                "status": "NOT EVALUATED",
+                "role": "Enforces prop-firm drawdown rules (daily loss limit, leverage caps, mandatory SL).",
                 "metrics": {
-                    "Daily Drawdown Limit": "3.0% (Enforced Max: 5.0%)",
-                    "Max Leverage Enforced": "1:100 (Safe Spot)",
-                    "Stop-Loss Adherence": "100.0% Required",
-                    "Weekend Risk Status": "Protected",
+                    "Daily Loss Limit": "3.0% (config value)",
+                    "Kill Switch": "ENGAGED" if acct["kill_switch_active"] else "armed",
+                    "Open Paper Positions": str(len(positions)),
+                    "Measured Compliance Run": "NOT MEASURED",
                 },
-                "audit_verdict": "Full compliance. Passed all FTMO & MFF institutional stress tests.",
+                "audit_verdict": "Rules exist in code; no measured compliance record exists yet.",
             },
             {
                 "id": "portfolio_risk_agent",
                 "name": "Portfolio Risk & Capital Preservation Agent",
-                "score": 96.0,
-                "status": "PASSED",
-                "role": "Calculates Parametric VaR (99%), maximum adverse excursion, and portfolio ruin probability.",
+                "score": None,
+                "status": "NOT EVALUATED",
+                "role": "Portfolio risk on open positions.",
                 "metrics": {
                     "Current Risk % of Equity": f"{risk_assessment.get('risk_pct_of_equity', 0.0)}%",
                     "Total Notional USD": f"${risk_assessment.get('total_notional_usd', 0.0):,.2f}",
                     "Leverage Exposure": f"{risk_assessment.get('leverage', 0.0)}x",
-                    "Risk Verdict": risk_assessment.get("verdict", "PASS"),
+                    "VaR / Ruin Probability": "NOT MEASURED",
                 },
-                "audit_verdict": "Low tail-risk profile. Asymmetric capital preservation confirmed.",
+                "audit_verdict": "Position-based risk computed live; VaR/ruin models are not implemented.",
             },
             {
                 "id": "execution_agent",
-                "name": "Smart Order Execution & Slippage Agent",
-                "score": 93.8,
-                "status": "OPTIMIZED",
-                "role": "Models spread cost, execution latency, and slippage impact across gold trading sessions.",
+                "name": "Execution & Slippage",
+                "score": None,
+                "status": "NOT EVALUATED",
+                "role": "Order execution path and cost model.",
                 "metrics": {
-                    "Effective Spread": f"${spread:.2f}/oz",
-                    "Fill Execution Mode": "IOC / Direct Local Bridge",
+                    "Effective Spread": _na(spread, lambda v: f"${v:.2f}/oz"),
+                    "Execution Mode": "PAPER ONLY (no live broker attached)",
                     "Contract Standard": "100 oz per Lot",
-                    "Execution Speed": "< 12 ms",
+                    "Measured Slippage": "NOT MEASURED",
                 },
-                "audit_verdict": f"High-efficiency execution. Live spread at ${spread:.2f} within institutional tolerance.",
+                "audit_verdict": "No live execution has occurred; slippage and latency are unmeasured.",
             },
             {
                 "id": "market_intelligence_agent",
-                "name": "Market Intelligence & Session Regime Agent",
-                "score": 92.5,
-                "status": "ACTIVE",
-                "role": "Classifies session volatility regimes, DXY dollar index correlation, and liquidity depth.",
+                "name": "Market Intelligence & Session Agent",
+                "score": None,
+                "status": "NOT EVALUATED",
+                "role": "Session classification and tradeable-window logic.",
                 "metrics": {
-                    "Active Sessions": session_data.get("session", "LONDON/NY"),
-                    "Session Volatility": session_data.get("volatility_expectation", "high").upper(),
-                    "Liquidity Status": mkt_ctx.get("liquidity", "HIGH"),
-                    "Tradeable": "YES" if mkt_ctx.get("tradeable") else "NO",
+                    "Active Session": _na(session_data.get("session")),
+                    "Session Volatility": _na(session_data.get("volatility_expectation")),
+                    "Liquidity Status": _na(mkt_ctx.get("liquidity")),
+                    "Predictive Accuracy": "NOT MEASURED",
                 },
-                "audit_verdict": f"Favorable liquidity conditions in {session_data.get('session', 'ACTIVE')} window.",
+                "audit_verdict": "Session logic runs live; its predictive value has never been measured.",
             },
             {
                 "id": "research_agent",
                 "name": "Alpha Research & Signal Edge Agent",
-                "score": 91.0,
-                "status": "ACTIVE",
-                "role": "Evaluates predictive signal-to-noise ratio, multi-timeframe confirmation, and factor edge.",
+                "score": None,
+                "status": "NOT EVALUATED",
+                "role": "Regime detection and strategy candidates.",
                 "metrics": {
-                    "Detected Regime": regime_data.get("regime", "trending").replace("_", " ").title(),
-                    "Current Price": f"${cur_price:.2f}",
-                    "14-Period ATR": f"${atr_val:.2f}/oz",
-                    "14-Period RSI": f"{rsi_val:.1f}",
+                    "Detected Regime": _na(regime, lambda v: str(v).replace("_", " ").title()),
+                    "Regime Measured From Data": "YES" if regime_measured else "NO",
+                    "Current Price": _na(cur_price, lambda v: f"${v:.2f}"),
+                    "Signal Edge": "NOT MEASURED",
                 },
-                "audit_verdict": f"Market Regime: {regime_data.get('regime', 'trending').upper()}. Confidence {regime_data.get('confidence', 0.85)*100:.0f}%.",
+                "audit_verdict": "Regime detection runs on real data; no signal edge has ever been demonstrated.",
             },
             {
                 "id": "strategy_optimization_agent",
                 "name": "Walk-Forward & Anti-Overfitting Agent",
-                "score": 89.4,
-                "status": "VERIFIED",
-                "role": "Performs walk-forward optimization (WFO), Monte Carlo stress-testing, and parameter stability checks.",
+                "score": None,
+                "status": "NOT EVALUATED",
+                "role": "Walk-forward optimization and parameter stability.",
                 "metrics": {
-                    "Walk-Forward Efficiency": "86.2%",
-                    "Monte Carlo (1,000 runs) Pass": "97.4%",
-                    "Degrees-of-Freedom Ratio": "14.2 : 1",
-                    "Out-of-Sample Retention": "82.5%",
+                    "Walk-Forward Efficiency": "NOT MEASURED",
+                    "Monte Carlo Pass": "NOT MEASURED",
+                    "Out-of-Sample Retention": "NOT MEASURED",
+                    "Verified OOS Results On Record": "0 strategies",
                 },
-                "audit_verdict": "Passed anti-curve-fitting validation. Robust out-of-sample stability.",
+                "audit_verdict": ("No walk-forward validation has been run on any strategy "
+                                  "in this codebase (results/optimization_summary.csv holds one "
+                                  "in-sample FAIL). Previously displayed WFE/Monte-Carlo numbers were fabricated."),
             },
             {
                 "id": "strategy_adaptation_agent",
                 "name": "Dynamic Strategy Adaptation Agent",
-                "score": 92.0,
-                "status": "ACTIVE",
-                "role": "Dynamically calibrates position sizing, ATR trailing stops, and session filters to current market regime.",
+                "score": None,
+                "status": "NOT EVALUATED",
+                "role": "Regime-based parameter adaptation.",
                 "metrics": {
-                    "Recommended Sizing": "0.10 Lots (per $100k)",
-                    "Regime Strategy Fit": f"{regime_data.get('regime', 'trending').upper()} Optimal",
-                    "Dynamic SL Distance": f"${atr_val * 1.5:.2f}/oz (1.5x ATR)",
-                    "Session Filter State": "Active",
+                    "Regime Strategy Fit": _na(regime, lambda v: str(v).upper() if regime_measured else "NOT MEASURED"),
+                    "Adaptation Events": "NOT MEASURED",
+                    "Benefit Over Static Params": "NOT MEASURED",
                 },
-                "audit_verdict": "Strategy parameters successfully aligned with current gold volatility profile.",
+                "audit_verdict": "No adaptation loop has been validated against a static baseline.",
             },
             {
                 "id": "performance_analyst_agent",
-                "name": "Quantitative Alpha & Edge Analyst Agent",
-                "score": 94.6,
-                "status": "PASSED",
-                "role": "Audits realized win rate, Profit Factor, Sharpe/Sortino ratios, and trader behavioral discipline.",
+                "name": "Quantitative Performance Analyst",
+                "score": None,
+                "status": "NOT EVALUATED",
+                "role": "Realized trade performance analytics.",
                 "metrics": {
-                    "Model Profit Factor": "1.74 (Target > 1.50)",
-                    "Annualized Sharpe": "1.86",
-                    "Win-Loss Expectancy": "+0.42 R",
-                    "Drawdown Safety Factor": "4.2x",
+                    "Realized Trades Analyzed": "0 (no trade ledger on record)",
+                    "Profit Factor": "NOT MEASURED",
+                    "Annualized Sharpe": "NOT MEASURED",
+                    "Expectancy": "NOT MEASURED",
                 },
-                "audit_verdict": "Positive mathematical expectancy verified across 12,600+ real MT5 spot bars.",
+                "audit_verdict": ("No live or paper trade ledger exists yet. The previously displayed "
+                                  "PF 1.74 / Sharpe 1.86 / 12,600-bar claim was fabricated."),
             },
         ],
         "executive_summary": (
-            f"The institutional AI Agent Council has conducted a live quantitative audit on XAUUSD (Current Price: ${cur_price:.2f}). "
-            f"Active Session: {session_data.get('session', 'LONDON/NY')}. Regime: {regime_data.get('regime', 'trending').upper()}. "
-            f"All 8 specialized AI agents confirmed 100% adherence to prop-firm capital preservation and risk management constraints."
+            "NOT EVALUATED. This scorecard previously asserted a 94.2/100 "
+            "'INSTITUTIONAL GRADE' verdict with hardcoded per-agent scores and "
+            "invented walk-forward, Monte-Carlo and performance statistics. No "
+            "audit harness measures any of that. Live measured context only: "
+            f"price {_na(cur_price, lambda v: f'${v:.2f}')}, session "
+            f"{_na(session_data.get('session'))}, paper equity "
+            f"${acct['equity']:,.2f}, open positions {len(positions)}."
         ),
     }
     return scorecard
-
-
-@router.post("/api/agents/execute_single")
-async def execute_single_agent(req: SingleAgentExecReq):
-    """Execute a single agent on live data and return formatted operational analysis."""
-    from datetime import datetime, timezone
-    now_str = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-
-    if req.agent_id == "research_agent":
-        res = RESEARCH_AGENT._detect_regime(req.symbol, req.timeframe, 30)
-        msg = AgentMessage(
-            sender="user",
-            receiver="research_agent",
-            msg_type=MessageType.REQUEST,
-            payload={"action": "market_research", **res},
-        )
-        await ORCHESTRATOR._deliver(msg)
-        return {
-            "agent_id": "research_agent",
-            "name": "Alpha Research Agent",
-            "timestamp": now_str,
-            "status": "PASSED",
-            "summary": f"Detected Regime: {res['regime'].upper()} (Confidence: {int(res['confidence']*100)}%)",
-            "details": res["insights"],
-            "metrics": res.get("metrics", {}),
-        }
-
-    if req.agent_id == "market_intelligence_agent":
-        res = MARKET_INTELLIGENCE_AGENT._analyze_session(req.symbol)
-        ctx = MARKET_INTELLIGENCE_AGENT._get_market_context(req.symbol)
-        msg = AgentMessage(
-            sender="user",
-            receiver="market_intelligence_agent",
-            msg_type=MessageType.REQUEST,
-            payload={"action": "session_analysis", "session": res["session"], "spread": ctx["spread_points"]},
-        )
-        await ORCHESTRATOR._deliver(msg)
-        return {
-            "agent_id": "market_intelligence_agent",
-            "name": "Market Intelligence Agent",
-            "timestamp": now_str,
-            "status": "ACTIVE",
-            "summary": f"Active Session: {res['session']} | Volatility: {res['volatility_expectation'].upper()} | Spread: ${ctx['spread_points']:.2f}/oz",
-            "details": [
-                f"Trading Session Window: {res['session']}",
-                f"Spot Gold Liquidity Depth: {ctx['liquidity']}",
-                f"Tradeability Status: {'TRADEABLE (Spread < $0.40)' if ctx['tradeable'] else 'CAUTION'}",
-                f"Recommended Models: {', '.join(res.get('recommended_strategies', []))}",
-            ],
-            "metrics": {"spread": ctx["spread_points"], "volatility": res["volatility_expectation"]},
-        }
-
-    if req.agent_id == "compliance_agent":
-        acct = EXECUTION_ENGINE.get_account_summary()
-        res = COMPLIANCE_AGENT._check_prop_rules({
-            "account_size": acct["equity"],
-            "daily_loss_limit_pct": 3.0,
-            "max_daily_trades": 5,
-            "max_risk_pct": 1.0,
-        })
-        msg = AgentMessage(
-            sender="user",
-            receiver="compliance_agent",
-            msg_type=MessageType.REQUEST,
-            payload={"action": "check_prop_rules", **res},
-        )
-        await ORCHESTRATOR._deliver(msg)
-        return {
-            "agent_id": "compliance_agent",
-            "name": "Prop-Firm Compliance Agent",
-            "timestamp": now_str,
-            "status": "PASSED" if res["compliant"] else "BLOCKED",
-            "summary": f"Prop-Firm Rule Status: {'100% COMPLIANT' if res['compliant'] else 'VIOLATION DETECTED'}",
-            "details": [
-                f"Account Equity Audited: ${acct['equity']:,.2f}",
-                "FTMO/MFF Max Daily Drawdown Cap: 5.0% (Platform Limit: 3.0%)",
-                "Max Risk Per Trade: 1.0% (Hard Stop enforced)",
-                "Weekend Holding Policy: Protected by Execution Engine",
-            ],
-            "metrics": {"compliant": res["compliant"], "violations": res["violations"]},
-        }
-
-    if req.agent_id == "portfolio_risk_agent":
-        acct = EXECUTION_ENGINE.get_account_summary()
-        positions = EXECUTION_ENGINE.get_positions()
-        res = PORTFOLIO_RISK_AGENT._assess_portfolio_risk({
-            "positions": positions,
-            "account_equity": acct["equity"],
-        })
-        msg = AgentMessage(
-            sender="user",
-            receiver="portfolio_risk_agent",
-            msg_type=MessageType.REQUEST,
-            payload={"action": "assess_portfolio_risk", **res},
-        )
-        await ORCHESTRATOR._deliver(msg)
-        return {
-            "agent_id": "portfolio_risk_agent",
-            "name": "Portfolio Risk Agent",
-            "timestamp": now_str,
-            "status": res["verdict"],
-            "summary": f"Portfolio Risk: {res['risk_pct_of_equity']}% of Equity | Margin: ${acct['margin']:.2f}",
-            "details": [
-                f"Active Open Positions: {len(positions)}",
-                f"Total Notional Value: ${res['total_notional_usd']:,.2f}",
-                f"Leverage Exposure: {res['leverage']:.2f}x (Max Cap: 10.0x)",
-                f"Concentration Risk: {res['concentration_risk']}",
-            ],
-            "metrics": res,
-        }
-
-    if req.agent_id == "execution_agent":
-        mkt = MARKET_INTELLIGENCE_AGENT._get_market_context(req.symbol)
-        msg = AgentMessage(
-            sender="user",
-            receiver="execution_agent",
-            msg_type=MessageType.REQUEST,
-            payload={"action": "routing_check", "broker": DATA_MANAGER.active_name},
-        )
-        await ORCHESTRATOR._deliver(msg)
-        return {
-            "agent_id": "execution_agent",
-            "name": "Smart Order Execution Agent",
-            "timestamp": now_str,
-            "status": "OPTIMIZED",
-            "summary": f"Broker: {DATA_MANAGER.active_name} | Latency: < 12 ms | Spread: ${mkt['spread_points']:.2f}",
-            "details": [
-                f"Active Connector: {DATA_MANAGER.active_name}",
-                "Order Type Routing: Immediate-or-Cancel (IOC) with 20pt slippage buffer",
-                "Contract Specification: 100 troy oz per lot",
-                "Kill Switch Circuit Breaker: Ready & Armed",
-            ],
-            "metrics": {"spread": mkt["spread_points"], "latency_ms": 12},
-        }
-
-    if req.agent_id == "strategy_adaptation_agent":
-        regime = RESEARCH_AGENT._detect_regime(req.symbol, req.timeframe, 30)
-        msg = AgentMessage(
-            sender="user",
-            receiver="strategy_adaptation_agent",
-            msg_type=MessageType.REQUEST,
-            payload={"action": "adapt_strategy", "regime": regime["regime"]},
-        )
-        await ORCHESTRATOR._deliver(msg)
-        return {
-            "agent_id": "strategy_adaptation_agent",
-            "name": "Dynamic Strategy Adaptation Agent",
-            "timestamp": now_str,
-            "status": "SYNCHRONIZED",
-            "summary": f"Adapted for {regime['regime'].upper()} | Recommended Sizing: 0.10 Lots",
-            "details": [
-                f"Detected Current Microstructure: {regime['regime'].upper()}",
-                "Recommended Setup: Pullback trend-continuation on 15m",
-                f"Dynamic Stop Loss: 1.5x ATR (${regime.get('metrics', {}).get('atr', 6.8):.2f})",
-                "Profit Target Model: 2.0x Risk-to-Reward (R:R)",
-            ],
-            "metrics": regime.get("metrics", {}),
-        }
-
-    if req.agent_id == "strategy_optimization_agent":
-        msg = AgentMessage(
-            sender="user",
-            receiver="strategy_optimization_agent",
-            msg_type=MessageType.REQUEST,
-            payload={"action": "wfo_audit", "status": "verified"},
-        )
-        await ORCHESTRATOR._deliver(msg)
-        return {
-            "agent_id": "strategy_optimization_agent",
-            "name": "Walk-Forward Optimization Agent",
-            "timestamp": now_str,
-            "status": "VERIFIED",
-            "summary": "Walk-Forward Efficiency: 86.2% | Anti-Curve Fitting Passed",
-            "details": [
-                "Monte Carlo Stress Test: 1,000 simulations passed with 97.4% confidence",
-                "Parameter Cluster Stability: EMA 20/50 plateau confirmed (no isolated spikes)",
-                "Out-of-Sample Retention: 82.5% profitability across unseen data",
-                "Degrees-of-Freedom Ratio: 14.2 : 1 (Overfit immune)",
-            ],
-            "metrics": {"wfe": 86.2, "monte_carlo_pass": 97.4},
-        }
-
-    if req.agent_id == "performance_analyst_agent":
-        trades_count = len(EXECUTION_ENGINE.trade_log)
-        msg = AgentMessage(
-            sender="user",
-            receiver="performance_analyst_agent",
-            msg_type=MessageType.REQUEST,
-            payload={"action": "analyze_performance", "trades_count": trades_count},
-        )
-        await ORCHESTRATOR._deliver(msg)
-        return {
-            "agent_id": "performance_analyst_agent",
-            "name": "Quantitative Alpha Analyst Agent",
-            "timestamp": now_str,
-            "status": "PASSED",
-            "summary": "Sharpe: 1.86 | Profit Factor: 1.74 | Positive Mathematical Expectancy",
-            "details": [
-                f"Logged Session Trades: {trades_count} executed trades",
-                "Historical Benchmark: Evaluated over 12,630 bars of MT5 Spot XAUUSD",
-                "Expectancy per Trade: +0.42 R ($42.00 on 1.0 lot)",
-                "Max Consecutive Losses: 3 trades (low ruin probability)",
-            ],
-            "metrics": {"sharpe": 1.86, "pf": 1.74, "trades": trades_count},
-        }
-
-    return {"error": f"Agent {req.agent_id} not found"}
-
-
-@router.post("/api/agents/run_live")
-async def run_live_agents_audit():
-    """Trigger active recalculation across all 8 agents."""
-    return agents_audit_endpoint()

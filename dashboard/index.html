@@ -3058,7 +3058,9 @@
       try {
         const r = await api("/api/agents/run_live", { method: "POST" });
         auditData = r;
-        badge.textContent = `${r.overall_score} / 100 PASS`;
+        badge.textContent = r.overall_score == null
+          ? "NOT EVALUATED"
+          : `${r.overall_score} / 100 ${r.status === "APPROVED_FOR_ALLOCATION" ? "PASS" : "REVIEW"}`;
         loadAgentsAudit();
       } catch (e) {
         await loadAgentsAudit();
@@ -3234,7 +3236,9 @@
       try {
         const r = await api("/api/agents/audit");
         auditData = r;
-        document.getElementById("overallScoreBadge").textContent = `${r.overall_score} / 100 PASS`;
+        document.getElementById("overallScoreBadge").textContent = r.overall_score == null
+          ? "NOT EVALUATED"
+          : `${r.overall_score} / 100 PASS`;
 
         let html = "";
         (r.agents || []).forEach(a => {
@@ -3616,7 +3620,7 @@
         });
 
         document.getElementById("pfResultCard").style.display = "block";
-        document.getElementById("pfGradeBadge").textContent = res.grade || "A+ PASS";
+        document.getElementById("pfGradeBadge").textContent = res.grade || "NOT EVALUATED";
         document.getElementById("pfSimVerdict").textContent = res.status || "PASSED";
         document.getElementById("pfPassRateVal").textContent = `${res.pass_rate_pct}%`;
         document.getElementById("pfTradesPassVal").textContent = `Expected trades to target: ~${res.avg_trades_to_pass || 20} trades`;

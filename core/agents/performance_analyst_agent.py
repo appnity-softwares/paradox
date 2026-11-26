@@ -9,6 +9,7 @@ Responsibilities:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from core.orchestrator import AgentCapability, AgentMessage, BaseAgent, MessageType
@@ -160,35 +161,116 @@ class PerformanceAnalystAgent(BaseAgent):
         }
 
     def _generate_report(self, payload: dict) -> dict:
+        """Performance reports come from the REAL trade ledger, or not at all.
+
+        The old implementation fabricated every number in the summary from a
+        sha256 hash of the strategy name and attached three canned
+        'recommendations' that had nothing to do with any data. A report
+        without measured trades is refused.
+        """
         strategy_name = payload.get("strategy_name", "unknown")
         period_days = int(payload.get("period_days", 30))
         include_charts = payload.get("include_charts", False)
 
-        import hashlib
-        seed = f"{strategy_name}:{period_days}"
-        h = int(hashlib.sha256(seed.encode()).hexdigest()[:8], 16)
+        trades, source = self._measured_trades(strategy_name, period_days)
+        if not trades:
+            return {
+                "report_id": None,
+                "strategy_name": strategy_name,
+                "period_days": period_days,
+                "measured": False,
+                "summary": None,
+                "recommendations": [],
+                "include_charts": include_charts,
+                "error": ("no measured trades on record for this strategy and "
+                          "period; a performance report cannot be generated "
+                          "without real trade data"),
+            }
 
-        report_id = f"RPT-{strategy_name.upper()}-{h:06x}"
+        import statistics
+
+        pnls = [t["pnl"] for t in trades]
+        wins = [p for p in pnls if p > 0]
+        total_return = sum(pnls)
+        peak, dd = 0.0, 0.0
+        equity = 0.0
+        for p in pnls:
+            equity += p
+            peak = max(peak, equity)
+            dd = min(dd, equity - peak)
+        gross_win = sum(wins)
+        gross_loss = -sum(p for p in pnls if p < 0)
+        pf = (gross_win / gross_loss) if gross_loss > 0 else float("inf") if gross_win > 0 else 0.0
+        sharpe = (statistics.mean(pnls) / statistics.pstdev(pnls) * (len(pnls) ** 0.5)
+                  if len(pnls) > 1 and statistics.pstdev(pnls) > 0 else 0.0)
+
+        recs = []
+        if total_return < 0:
+            recs.append("strategy is net negative over the measured period — review before scaling")
+        if dd < -0.15 * max(1.0, abs(total_return)):
+            recs.append("drawdown is large relative to net return — check stop placement")
+        if not recs:
+            recs.append("no specific recommendation derivable from this small sample")
 
         return {
-            "report_id": report_id,
+            "report_id": f"RPT-{strategy_name.upper()}-{len(trades)}trades",
             "strategy_name": strategy_name,
             "period_days": period_days,
             "generated_at": __import__("datetime").datetime.now(timezone.utc).isoformat(),
+            "measured": True,
+            "data_source": source,
+            "trade_count": len(trades),
             "summary": {
-                "total_return": round(-10 + (h % 50), 1),
-                "win_rate": round(35 + (h % 30), 1),
-                "max_dd": round(-5 - (h % 20), 1),
-                "sharpe": round(0.5 + (h % 40) / 20, 2),
-                "total_trades": 50 + (h % 100),
+                "total_return": round(total_return, 2),
+                "win_rate": round(100.0 * len(wins) / len(pnls), 1),
+                "max_dd": round(dd, 2),
+                "sharpe": round(sharpe, 2),
+                "total_trades": len(pnls),
+                "profit_factor": round(pf, 2) if pf != float("inf") else None,
             },
-            "recommendations": [
-                "Consider reducing position size during high volatility sessions",
-                "Add news filter to avoid trading during major economic events",
-                "Review stop loss placement - consider ATR-based dynamic stops",
-            ],
+            "recommendations": recs,
             "include_charts": include_charts,
         }
+
+    def _measured_trades(self, strategy_name: str, period_days: int) -> tuple[list[dict], str]:
+        """Read the real trade ledgers (results/trades_{strategy}.csv from
+        backtests), filtered by period. Returns (trades, source_label).
+        Empty when there is nothing measured."""
+        from pathlib import Path
+        import csv
+        from datetime import datetime, timedelta, timezone
+
+        results_dir = Path(__file__).resolve().parents[2] / "results"
+        if strategy_name in ("unknown", "all"):
+            paths = sorted(results_dir.glob("trades_*.csv"))
+            label = "backtest ledger (all strategies)"
+        else:
+            path = results_dir / f"trades_{strategy_name.lower()}.csv"
+            paths = [path] if path.exists() else []
+            label = "backtest ledger (in-sample)"
+        if not paths:
+            return [], label
+        cutoff = datetime.now(timezone.utc) - timedelta(days=period_days)
+        trades = []
+        for path in paths:
+            try:
+                with open(path, newline="") as fh:
+                    for row in csv.DictReader(fh):
+                        try:
+                            when = datetime.fromisoformat(row["exit_time"])
+                            if when.tzinfo is None:
+                                when = when.replace(tzinfo=timezone.utc)
+                        except (KeyError, ValueError):
+                            when = None
+                        if when and when < cutoff:
+                            continue
+                        try:
+                            trades.append({"pnl": float(row["pnl"]), "exit_time": row["exit_time"]})
+                        except (KeyError, ValueError):
+                            continue
+            except Exception:
+                continue
+        return trades, label
 
     def _compare_with_benchmark(self, payload: dict) -> dict:
         strategy_returns = payload.get("strategy_returns", [])

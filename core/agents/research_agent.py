@@ -115,12 +115,15 @@ class ResearchAgent(BaseAgent):
         try:
             snapshot = fetch_market_data(timeframe, bars=300, allow_stale=True, allow_synthetic=False)
             df = snapshot.data
-        except Exception:
+        except Exception as exc:
+            # No data means NO regime call. A fabricated regime with invented
+            # confidence is indistinguishable from a real one downstream.
             return {
-                "regime": "trending_down",
-                "confidence": 0.88,
-                "insights": ["Gold currently under downward structural pressure", "ATR elevated"],
-                "metrics": {"atr": 6.8, "rsi": 42.0},
+                "regime": "unavailable",
+                "confidence": 0.0,
+                "insights": [f"regime unavailable: no usable market data ({exc})"],
+                "metrics": {},
+                "measured": False,
             }
 
         close = df["close"]
@@ -192,19 +195,25 @@ class ResearchAgent(BaseAgent):
         }
 
     def _discover_strategies(self, strategy_type: str, symbol: str, timeframe: str) -> list[dict]:
+        """Static candidate CATALOGUE by style — not a ranking.
+
+        The old version attached invented "score" values (0.84, 0.78, ...)
+        that were never measured anywhere. Scores are now None and the
+        payload says so; a real score only comes from a real backtest.
+        """
         candidates_map = {
             "trend_following": [
-                {"name": "EMA 20/50 Cross", "params": {"fast": 20, "slow": 50}, "score": 0.84, "suitability": "High"},
-                {"name": "Supertrend Break", "params": {"length": 10, "mult": 3.0}, "score": 0.78, "suitability": "Moderate"},
-                {"name": "MACD Zero Cross", "params": {"fast": 12, "slow": 26, "signal": 9}, "score": 0.73, "suitability": "Good"},
+                {"name": "EMA 20/50 Cross", "params": {"fast": 20, "slow": 50}, "score": None, "suitability": "candidate — unmeasured"},
+                {"name": "Supertrend Break", "params": {"length": 10, "mult": 3.0}, "score": None, "suitability": "candidate — unmeasured"},
+                {"name": "MACD Zero Cross", "params": {"fast": 12, "slow": 26, "signal": 9}, "score": None, "suitability": "candidate — unmeasured"},
             ],
             "mean_reversion": [
-                {"name": "RSI Extreme Reversal", "params": {"length": 14, "oversold": 30, "overbought": 70}, "score": 0.81, "suitability": "High in Ranges"},
-                {"name": "Bollinger Bands Reversion", "params": {"length": 20, "num_std": 2.0}, "score": 0.77, "suitability": "Moderate"},
+                {"name": "RSI Extreme Reversal", "params": {"length": 14, "oversold": 30, "overbought": 70}, "score": None, "suitability": "candidate — unmeasured"},
+                {"name": "Bollinger Bands Reversion", "params": {"length": 20, "num_std": 2.0}, "score": None, "suitability": "candidate — unmeasured"},
             ],
             "breakout": [
-                {"name": "Session Breakout", "params": {"buffer": 0.0, "range_end": 7}, "score": 0.79, "suitability": "London Open"},
-                {"name": "VWAP+EMA Trend Pullback", "params": {"ema_length": 20, "slope": 1}, "score": 0.82, "suitability": "NY Session"},
+                {"name": "Session Breakout", "params": {"buffer": 0.0, "range_end": 7}, "score": None, "suitability": "candidate — unmeasured"},
+                {"name": "VWAP+EMA Trend Pullback", "params": {"ema_length": 20, "slope": 1}, "score": None, "suitability": "candidate — unmeasured"},
             ],
         }
         return candidates_map.get(strategy_type, candidates_map["trend_following"])
@@ -229,13 +238,13 @@ class ResearchAgent(BaseAgent):
                     "total_trades": res.metrics.total_trades,
                     "profit_factor": res.metrics.profit_factor,
                 }
-        except Exception:
-            pass
+        except Exception as exc:
+            return {
+                "error": f"historical analysis unavailable: {exc}",
+                "measured": False,
+            }
 
         return {
-            "win_rate": 52.6,
-            "max_dd": -7.2,
-            "total_return": 14.8,
-            "total_trades": 76,
-            "profit_factor": 1.48,
+            "error": f"unknown strategy: {strategy_name}",
+            "measured": False,
         }

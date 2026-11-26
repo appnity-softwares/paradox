@@ -110,19 +110,39 @@ class StrategyOptimizationAgent(BaseAgent):
         )
 
     async def _handle_regime_change(self, message: AgentMessage, payload: dict) -> AgentMessage | None:
+        """Regime-change verdicts require a measured baseline.
+
+        The old implementation derived 'regime_changed' and a 'confidence'
+        from a sha256 hash of the input string — deterministic noise with a
+        confident tone. Without a real optimization baseline for this
+        strategy the honest answer is: not measured.
+        """
         strategy_name = payload.get("strategy_name", "ema_cross")
         symbol = payload.get("symbol", "XAUUSD")
         current_regime = payload.get("current_regime", "unknown")
 
-        # Compare current regime with optimization baseline
-        import hashlib
+        baseline = self._load_optimization_baseline(strategy_name, symbol)
+        if baseline is None:
+            return await self.reply_to(
+                message,
+                {
+                    "success": False,
+                    "strategy_name": strategy_name,
+                    "symbol": symbol,
+                    "current_regime": current_regime,
+                    "regime_changed": None,
+                    "recommend_reoptimize": None,
+                    "confidence": 0.0,
+                    "measured": False,
+                    "reason": ("no optimization baseline on record for "
+                               f"{strategy_name} on {symbol}; run a real "
+                               "optimization first — regime-change detection "
+                               "is not available"),
+                },
+            )
 
-        seed = f"{strategy_name}:{symbol}:{current_regime}"
-        h = int(hashlib.sha256(seed.encode()).hexdigest()[:8], 16)
-
-        regime_changed = (h % 3) == 0
-        confidence = round(0.5 + (h % 50) / 100, 2)
-
+        baseline_regime = baseline.get("regime")
+        regime_changed = baseline_regime is not None and current_regime != baseline_regime
         return await self.reply_to(
             message,
             {
@@ -130,35 +150,69 @@ class StrategyOptimizationAgent(BaseAgent):
                 "strategy_name": strategy_name,
                 "symbol": symbol,
                 "current_regime": current_regime,
+                "baseline_regime": baseline_regime,
                 "regime_changed": regime_changed,
                 "recommend_reoptimize": regime_changed,
-                "confidence": confidence,
-                "reason": "Regime shift detected from optimization baseline" if regime_changed else "Current regime matches baseline",
+                "measured": True,
+                "reason": (f"baseline regime was {baseline_regime!r}" if regime_changed
+                           else f"current regime matches baseline {baseline_regime!r}"),
             },
         )
 
+    def _load_optimization_baseline(self, strategy_name: str, symbol: str) -> dict | None:
+        """Read the recorded optimization result for a strategy, if any."""
+        from pathlib import Path
+        import csv
+
+        path = Path(__file__).resolve().parents[2] / "results" / "optimization_summary.csv"
+        if not path.exists():
+            return None
+        try:
+            with open(path, newline="") as fh:
+                for row in csv.DictReader(fh):
+                    if (row.get("strategy", "").lower() == strategy_name.lower()
+                            and row.get("symbol", symbol).upper() == symbol.upper()):
+                        return dict(row)
+        except Exception:
+            return None
+        return None
+
     async def _handle_compare(self, message: AgentMessage, payload: dict) -> AgentMessage | None:
+        """Rank strategies ONLY on recorded optimization results.
+
+        The old implementation generated win rates, drawdowns and Sharpes
+        from a sha256 hash of the strategy name — pure fiction presented as
+        a ranking. Now: strategies with a recorded, in-sample AND
+        out-of-sample verified result are ranked by that; the rest are
+        reported as unmeasured, never ranked.
+        """
         strategies = payload.get("strategies", ["ema_cross", "macd_cross", "rsi_reversal"])
         symbol = payload.get("symbol", "XAUUSD")
         timeframe = payload.get("timeframe", "15m")
 
-        import hashlib
-
-        results = []
+        ranked, unmeasured = [], []
         for s in strategies:
-            seed = f"{s}:{symbol}:{timeframe}:compare"
-            h = int(hashlib.sha256(seed.encode()).hexdigest()[:8], 16)
-            results.append({
-                "strategy": s,
-                "win_rate": round(25 + (h % 45), 1),
-                "max_dd": round(-5 - (h % 30), 1),
-                "sharpe": round(-1 + (h % 100) / 20, 2),
-                "total_return": round(-15 + (h % 70), 1),
-                "score": round(0.3 + (h % 70) / 100, 2),
-            })
+            row = self._load_optimization_baseline(s, symbol)
+            if row and row.get("oos_pass") not in (None, "", "False", "false", "FAIL"):
+                ranked.append({
+                    "strategy": s,
+                    "win_rate": row.get("oos_win_rate"),
+                    "max_dd": row.get("oos_max_dd"),
+                    "sharpe": row.get("oos_sharpe"),
+                    "total_return": row.get("oos_total_return"),
+                    "score": row.get("oos_score"),
+                    "measured": True,
+                })
+            else:
+                unmeasured.append({
+                    "strategy": s,
+                    "win_rate": None, "max_dd": None, "sharpe": None,
+                    "total_return": None, "score": None,
+                    "measured": False,
+                    "note": "no verified out-of-sample result on record",
+                })
 
-        results.sort(key=lambda x: x["score"], reverse=True)
-        best = results[0]["strategy"] if results else None
+        ranked.sort(key=lambda x: (x["score"] is not None, x["score"] or 0), reverse=True)
 
         return await self.reply_to(
             message,
@@ -166,8 +220,13 @@ class StrategyOptimizationAgent(BaseAgent):
                 "success": True,
                 "symbol": symbol,
                 "timeframe": timeframe,
-                "ranking": results,
-                "best_strategy": best,
+                "ranking": ranked + unmeasured,
+                "best_strategy": ranked[0]["strategy"] if ranked else None,
+                "unmeasured": [u["strategy"] for u in unmeasured],
                 "comparison_count": len(strategies),
+                "measured": bool(ranked),
+                "note": (None if ranked else
+                         "no strategy has a verified out-of-sample result; "
+                         "nothing is ranked — run real optimizations first"),
             },
         )
