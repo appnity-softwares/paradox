@@ -468,3 +468,33 @@ class TickBacktestReq(BaseModel):
     sl_points: float = Field(3.0, ge=0.5, le=50.0)
     tp_points: float = Field(6.0, ge=0.5, le=100.0)
     max_ticks: int = Field(50000, ge=1000, le=200000)
+
+
+class TickReplayReq(BaseModel):
+    strategy: str
+    params: dict[str, float | int] = Field(default_factory=dict)
+    timeframe: Timeframe = "15m"
+    bars: int = Field(2000, ge=50, le=20000)
+    risk_pct: float = Field(1.0, ge=0.1, le=5.0)
+    rr: float = Field(2.0, ge=0.25, le=10.0)
+    sl_method: StopMethod = "atr"
+    sl_atr_mult: float = Field(1.5, ge=0.1, le=10.0)
+    sl_fixed: float = Field(5.0, gt=0, le=1000.0)
+    session: SessionName = "all"
+    max_trades_per_day: int = Field(4, ge=1, le=50)
+    daily_loss_limit_pct: float = Field(3.0, ge=0.1, le=20.0)
+    slippage: float = Field(0.0, ge=0.0, le=10.0)
+    spread_ceiling: float | None = Field(None, gt=0, le=100.0)
+
+
+class TimeMachineReq(BaseModel):
+    entry: float = Field(..., gt=0)
+    stop: float = Field(..., gt=0)
+    target: float = Field(..., gt=0)
+    side: str = Field("buy", pattern="^(buy|sell)$")
+    entry_time: str | None = None
+    replays: int = Field(10000, ge=100, le=50000)
+    seed: int = Field(19, ge=0, le=999999)
+    flat_by: str = "23:55"
+    timeframe: Timeframe = "5m"
+    bars: int = Field(8000, ge=200, le=50000)

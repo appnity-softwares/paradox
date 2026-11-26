@@ -1753,6 +1753,10 @@
               <button class="btn-primary" style="flex:1" onclick="runBacktest()">Candle backtest</button>
               <button class="btn-secondary" style="flex:1" onclick="runTickBacktest()">Tick-by-tick</button>
             </div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button class="btn-primary" style="flex:1;background:#7c3aed" onclick="runFullTickReplay()">⚡ Full Tick Archive (2M+ ticks)</button>
+              <button class="btn-secondary" style="flex:1" onclick="runTimeMachine()">⏱ Time Machine</button>
+            </div>
             <div id="btStatus" style="font-size:10px;color:var(--text-muted);margin-top:6px;text-align:center"></div>
           </div>
 
@@ -3722,6 +3726,84 @@
         });
         ctx.stroke();
       });
+    }
+
+    // ── FULL TICK ARCHIVE REPLAY (all recorded months) ──
+    async function runFullTickReplay() {
+      const s = document.getElementById("strategy").value;
+      const risk = parseFloat(document.getElementById("risk").value) || 1.0;
+      const slfixed = parseFloat(document.getElementById("slfixed").value) || 3.0;
+      const rr = parseFloat(document.getElementById("rr").value) || 2.0;
+      const st = document.getElementById("btStatus");
+      st.innerHTML = '<span style="color:#a855f7">⏳ Replaying full tick archive (real bid/ask fills)…</span>';
+      try {
+        const res = await api("/api/tick_replay", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            strategy: s, risk_pct: risk,
+            sl_method: "fixed", sl_fixed: slfixed, rr: rr,
+            bars: 2000
+          })
+        });
+        const r = res.result;
+        document.getElementById("kpiCard").style.display = "none";
+        document.getElementById("tickKpiCard").style.display = "block";
+        document.getElementById("tickReplayBadge").textContent =
+          `${r.coverage.ticks_scanned.toLocaleString()} TICKS · FULL ARCHIVE`;
+        document.getElementById("tickKpiProfit").textContent =
+          (r.total_pnl >= 0 ? "+" : "") + "$" + r.total_pnl.toLocaleString();
+        document.getElementById("tickKpiProfit").className =
+          "kpi-val " + (r.total_pnl >= 0 ? "pos" : "neg");
+        document.getElementById("tickKpiWinRate").textContent = `${r.win_rate_pct}%`;
+        document.getElementById("tickKpiPF").textContent = r.profit_factor ?? "—";
+        document.getElementById("tickKpiDD").textContent = `-${r.max_drawdown_pct}%`;
+        document.getElementById("tickKpiCount").textContent =
+          `${r.coverage.ticks_scanned.toLocaleString()} ticks · ${r.coverage.bars_without_ticks} bars w/o ticks`;
+        document.getElementById("tickKpiDuration").textContent =
+          `${r.coverage.files} tick files (${r.coverage.span_start || "?"} → ${r.coverage.span_end || "?"})`;
+        st.innerHTML = '<span style="color:#10b981">✓ Full-archive tick replay done — real bid/ask fills.</span>';
+      } catch (e) {
+        st.innerHTML = `<span style="color:var(--red)">⚠ ${esc(e.message)}</span>`;
+      }
+    }
+
+    // ── TIME MACHINE: replay a plan before risking money ──
+    async function runTimeMachine() {
+      const st = document.getElementById("btStatus");
+      const entry = parseFloat(prompt("Entry price (XAUUSD):", "4400"));
+      if (entry === null || isNaN(entry)) return;
+      const stop = parseFloat(prompt("Stop price:", String(entry - 5)));
+      if (stop === null || isNaN(stop)) return;
+      const target = parseFloat(prompt("Target price:", String(entry + 10)));
+      if (target === null || isNaN(target)) return;
+      st.innerHTML = '<span style="color:#a855f7">⏳ Running 10,000 replays + past-session history…</span>';
+      try {
+        const r = await api("/api/timemachine", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            entry, stop, target, side: target > entry ? "buy" : "sell",
+            replays: 10000, seed: 19, flat_by: "23:55", timeframe: "5m", bars: 8000
+          })
+        });
+        const sim = r.simulation, hist = r.history;
+        st.innerHTML =
+          `<div style="text-align:left;color:#e8e8e8">` +
+          `<b>⏱ Time Machine</b> — ${sim.replays.toLocaleString()} replays from ${sim.pool_sessions} past sessions<br>` +
+          `Target first: <b style="color:var(--green)">${(sim.p_target * 100).toFixed(1)}%</b> · ` +
+          `Stop first: <b style="color:var(--red)">${(sim.p_stop * 100).toFixed(1)}%</b> · ` +
+          `Neither: ${(sim.p_neither * 100).toFixed(1)}%<br>` +
+          `Avg R: ${sim.avg_R} · Median close: ${sim.median_close} (5%–95%: ${sim.p5_close} – ${sim.p95_close})<br>` +
+          `<b style="color:#e0b64f">${esc(sim.verdict || "—")}</b>` +
+          (sim.many_neither ? ' · <span style="color:#e0b64f">⚠ many replays undecided at flat-by</span>' : '') +
+          `<br><span style="color:var(--text-muted)">History: rule fired ${hist.triggered}× in ${hist.sessions} sessions — ` +
+          `${hist.target} target / ${hist.stop} stop / ${hist.neither} neither · avg R ${hist.avg_R ?? "—"}` +
+          `${hist.p_target_decided != null ? ` · ${(hist.p_target_decided * 100).toFixed(1)}% target when decided` : ""}</span>` +
+          `<br><span style="color:var(--text-muted);font-size:9px">Simulation from the instrument's own recent bars is not a prediction.</span></div>`;
+      } catch (e) {
+        st.innerHTML = `<span style="color:var(--red)">⚠ ${esc(e.message)}</span>`;
+      }
     }
 
     // ── TICK-BY-TICK VERTEX BACKTEST & RAG INTELLIGENCE ──

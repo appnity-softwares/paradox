@@ -88,3 +88,37 @@ class PropFirmApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NewEngineApiTests(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+
+    def test_tick_replay_endpoint(self):
+        r = self.client.post("/api/tick_replay", json={
+            "strategy": "ema_cross", "bars": 300,
+            "sl_method": "fixed", "sl_fixed": 5.0})
+        self.assertEqual(r.status_code, 200)
+        d = r.json()
+        self.assertEqual(d["result"]["engine"], "tick_replay")
+        self.assertIn("ticks_scanned", d["result"]["coverage"])
+        self.assertIn("Win Rate %", d["metrics"])
+
+    def test_tick_replay_unknown_strategy(self):
+        r = self.client.post("/api/tick_replay", json={"strategy": "nope"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_timemachine_endpoint(self):
+        r = self.client.post("/api/timemachine", json={
+            "entry": 4400.0, "stop": 4395.0, "target": 4410.0,
+            "side": "buy", "replays": 500})
+        self.assertEqual(r.status_code, 200)
+        d = r.json()
+        self.assertEqual(d["plan"]["r_at_target"], 2.0)
+        self.assertIn("verdict", d["simulation"])
+        self.assertIn("triggered", d["history"])
+
+    def test_timemachine_invalid_plan_422(self):
+        r = self.client.post("/api/timemachine", json={
+            "entry": 4400.0, "stop": 4401.0, "target": 4410.0})
+        self.assertEqual(r.status_code, 422)
