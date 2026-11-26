@@ -342,7 +342,10 @@ class PaperTradingEngine:
                     [b["high"] for b in self._buffer], [b["low"] for b in self._buffer], [b["close"] for b in self._buffer]
                 )
                 sl_dist = atr * float(self._cfg.sl_atr_mult) if self._cfg.sl_method == "atr" else float(self._cfg.sl_fixed)
-                sl = entry + sl_dist if direction == "LONG" else entry - sl_dist
+                # LONG: stop BELOW entry, target ABOVE (the old code had the
+                # long stop inverted above the entry, so every position was
+                # "stopped out" on the next bar at a phantom profit).
+                sl = entry - sl_dist if direction == "LONG" else entry + sl_dist
                 tp = entry + sl_dist * float(self._cfg.rr) if direction == "LONG" else entry - sl_dist * float(self._cfg.rr)
                 self.positions.append(
                     PaperPosition(

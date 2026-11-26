@@ -163,7 +163,10 @@ class MacMT5Broker(DataProvider):
         return pd.DataFrame()
 
     def fetch_tick(self, symbol: str):
-        if self._last_tick and self._last_tick_symbol == symbol.upper():
+        if (self._last_tick and self._last_tick_symbol == symbol.upper()
+                and self._last_tick.get("bid") and self._last_tick.get("ask")):
+            # Only a tick with a real quote side serves as a quote; a
+            # last-price-only tick falls through to the bar-derived path.
             age = (datetime.now(timezone.utc) - self._last_tick["time"]).total_seconds()
             if age <= 15:
                 return self._last_tick
@@ -197,14 +200,29 @@ class MacMT5Broker(DataProvider):
             return None
 
     def record_live_tick(self, tick: dict):
+        """Store an EA tick with the EA's OWN timestamp.
+
+        No re-stamping: a tick that arrived late keeps its original time so
+        staleness stays measurable. Missing bid/ask are NOT invented here —
+        the tick is stored with last only and the quote side stays empty.
+        """
         p = float(tick.get("last", 0.0) or tick.get("bid", 0.0))
         if p <= 0:
             return
-        now = datetime.now(timezone.utc)
+        time_ms = tick.get("time_ms")
+        if time_ms:
+            try:
+                stamp = datetime.fromtimestamp(int(time_ms) / 1000, tz=timezone.utc)
+            except (TypeError, ValueError, OSError, OverflowError):
+                stamp = datetime.now(timezone.utc)
+        else:
+            stamp = datetime.now(timezone.utc)
+        bid = tick.get("bid")
+        ask = tick.get("ask")
         self._last_tick = {
-            "time": now,
-            "bid": float(tick.get("bid", p - 0.15)),
-            "ask": float(tick.get("ask", p + 0.15)),
+            "time": stamp,
+            "bid": float(bid) if bid else None,
+            "ask": float(ask) if ask else None,
             "last": p,
             "volume": float(tick.get("volume", 1.0)),
         }

@@ -2,7 +2,7 @@
   "source": "mt5_mac_history_cache",
   "symbol": "USDCNH",
   "h1_file": "/Users/jatin/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/Program Files/MetaTrader 5/bases/MetaQuotes-Demo/history/USDCNH/cache/H1.hc",
-  "extracted_at": "2026-11-26T08:48:14.184533+00:00",
+  "extracted_at": "2026-11-26T08:50:21.458007+00:00",
   "bars_1h": 1186,
   "data_as_of": "2026-11-12T09:00:00+00:00"
 }
